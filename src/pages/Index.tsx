@@ -76,9 +76,7 @@ function Reel({ symbols, spinning, finalIndex, delay }: {
   const prevSpinning = useRef(false);
 
   useEffect(() => {
-    if (spinning && !prevSpinning.current) {
-      setIsAnimating(true);
-    }
+    if (spinning && !prevSpinning.current) setIsAnimating(true);
     if (!spinning && prevSpinning.current) {
       setTimeout(() => {
         setOffset(finalIndex * ITEM_H);
@@ -89,51 +87,50 @@ function Reel({ symbols, spinning, finalIndex, delay }: {
   }, [spinning, finalIndex, delay]);
 
   const loopedSymbols = [...symbols, ...symbols, ...symbols];
-  const translateY = isAnimating
-    ? undefined
-    : -(offset % (symbols.length * ITEM_H));
+  const translateY = isAnimating ? undefined : -(offset % (symbols.length * ITEM_H));
 
   return (
-    <div
-      className="relative overflow-hidden rounded-xl"
-      style={{
-        width: 100,
-        height: ITEM_H * visible,
-        background: "linear-gradient(180deg, #0a001a 0%, #1a0533 50%, #0a001a 100%)",
-        border: "2px solid rgba(0,220,255,0.4)",
-        boxShadow: "inset 0 0 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,200,255,0.2)",
-      }}
-    >
-      {/* Подсветка центральной строки */}
+    <div className="relative overflow-hidden" style={{
+      width: 100,
+      height: ITEM_H * visible,
+      borderRadius: 14,
+      background: "linear-gradient(180deg, #08001f 0%, #12003a 40%, #08001f 100%)",
+      border: "2px solid rgba(0,220,255,0.7)",
+      boxShadow: [
+        "inset 0 0 30px rgba(0,0,0,0.9)",
+        "0 0 16px rgba(0,200,255,0.5)",
+        "0 0 32px rgba(0,100,255,0.3)",
+        "0 0 2px #00e5ff",
+      ].join(", "),
+    }}>
+      {/* Неоновая подсветка центральной строки (победная линия) */}
       <div className="absolute inset-x-0 z-10 pointer-events-none" style={{
         top: ITEM_H,
         height: ITEM_H,
-        background: "linear-gradient(180deg, rgba(0,200,255,0.08) 0%, rgba(0,200,255,0.15) 50%, rgba(0,200,255,0.08) 100%)",
-        borderTop: "1px solid rgba(0,220,255,0.4)",
-        borderBottom: "1px solid rgba(0,220,255,0.4)",
+        background: "linear-gradient(180deg, rgba(0,200,255,0.04) 0%, rgba(0,200,255,0.12) 50%, rgba(0,200,255,0.04) 100%)",
+        borderTop: "2px solid rgba(0,230,255,0.6)",
+        borderBottom: "2px solid rgba(0,230,255,0.6)",
+        boxShadow: "0 0 8px rgba(0,200,255,0.4)",
       }} />
 
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          transform: translateY !== undefined ? `translateY(${translateY}px)` : undefined,
-          transition: isAnimating ? "none" : "transform 0.3s ease-out",
-          animation: isAnimating ? `reelSpin 0.15s linear infinite` : "none",
-        }}
-      >
+      {/* Символы */}
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        transform: translateY !== undefined ? `translateY(${translateY}px)` : undefined,
+        transition: isAnimating ? "none" : "transform 0.3s ease-out",
+        animation: isAnimating ? `reelSpin 0.12s linear infinite` : "none",
+      }}>
         {loopedSymbols.map((sym, i) => (
-          <div
-            key={i}
-            style={{
-              height: ITEM_H,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 48,
-              flexShrink: 0,
-            }}
-          >
+          <div key={i} style={{
+            height: ITEM_H,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 52,
+            flexShrink: 0,
+            filter: "drop-shadow(0 0 6px rgba(255,255,255,0.4))",
+          }}>
             {sym}
           </div>
         ))}
@@ -141,10 +138,10 @@ function Reel({ symbols, spinning, finalIndex, delay }: {
 
       {/* Верхняя/нижняя тени */}
       <div className="absolute inset-x-0 top-0 h-16 pointer-events-none z-10" style={{
-        background: "linear-gradient(180deg, #0a001a 0%, transparent 100%)"
+        background: "linear-gradient(180deg, #08001f 0%, transparent 100%)"
       }} />
       <div className="absolute inset-x-0 bottom-0 h-16 pointer-events-none z-10" style={{
-        background: "linear-gradient(0deg, #0a001a 0%, transparent 100%)"
+        background: "linear-gradient(0deg, #08001f 0%, transparent 100%)"
       }} />
     </div>
   );
@@ -215,57 +212,63 @@ function SlotMachine({ onSpin, spinning, reelResults, showResult, winPrize }: {
 
       {/* Корпус машины */}
       <div className="relative" style={{
-        background: "linear-gradient(180deg, #8B4513 0%, #6B3410 40%, #4a2008 100%)",
-        borderRadius: "24px 24px 12px 12px",
+        background: "linear-gradient(180deg, #1a0050 0%, #0d0035 40%, #080020 100%)",
+        borderRadius: "28px 28px 16px 16px",
         padding: "0 20px 20px",
-        boxShadow: "0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.5)",
-        border: "3px solid #c8860a",
+        boxShadow: [
+          "0 0 60px rgba(168,85,247,0.4)",
+          "0 0 120px rgba(88,101,242,0.2)",
+          "0 8px 40px rgba(0,0,0,0.9)",
+          "inset 0 1px 0 rgba(255,255,255,0.1)",
+        ].join(", "),
+        border: "2px solid rgba(168,85,247,0.6)",
       }}>
 
         {/* Арка сверху */}
-        <div className="flex items-center justify-center py-4 relative">
-          <div className="absolute inset-0 rounded-t-2xl" style={{
-            background: "linear-gradient(180deg, #ffd700 0%, #c8860a 100%)",
-            margin: "-3px -3px 0",
-            borderRadius: "21px 21px 0 0",
+        <div className="flex items-center justify-center py-5 relative">
+          <div className="absolute inset-0" style={{
+            background: "linear-gradient(180deg, rgba(168,85,247,0.3) 0%, transparent 100%)",
+            margin: "-2px -2px 0",
+            borderRadius: "26px 26px 0 0",
+            borderTop: "2px solid rgba(200,150,255,0.5)",
           }} />
+          {/* Лампочки */}
+          {Array.from({ length: 11 }).map((_, i) => {
+            const colors = ["#00e5ff","#eb459e","#ffd700","#a855f7","#00e5ff"];
+            const c = colors[i % colors.length];
+            return (
+              <div key={i} className="absolute w-3 h-3 rounded-full animate-pulse"
+                style={{
+                  background: c, boxShadow: `0 0 8px ${c}, 0 0 16px ${c}88`,
+                  left: `${5 + i * 9}%`, top: 8,
+                  animationDelay: `${i * 0.12}s`, animationDuration: "1s",
+                }} />
+            );
+          })}
           <div className="relative z-10 text-center">
             <div className="font-black italic" style={{
-              fontSize: 18,
-              color: "#c0392b",
-              textShadow: "0 0 10px rgba(192,57,43,0.8), 2px 2px 0 #8b0000",
+              fontSize: 20, color: "#eb459e",
+              textShadow: "0 0 15px rgba(235,69,158,1), 0 0 30px rgba(235,69,158,0.5)",
               fontFamily: "serif",
             }}>Mega</div>
-            <div className="font-black" style={{
-              fontSize: 28,
-              color: "#ffd700",
-              textShadow: "0 0 15px rgba(255,215,0,0.8), 2px 2px 0 #8B4513",
-              letterSpacing: 4,
+            <div className="font-black tracking-widest" style={{
+              fontSize: 30, letterSpacing: 6,
+              background: "linear-gradient(135deg, #00e5ff, #a855f7, #00e5ff)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+              filter: "drop-shadow(0 0 10px rgba(0,200,255,0.8))",
               fontFamily: "serif",
             }}>SLOTS</div>
           </div>
-          {/* Лампочки по арке */}
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="absolute w-3 h-3 rounded-full animate-pulse"
-              style={{
-                background: i % 2 === 0 ? "#fff" : "#ffd700",
-                boxShadow: `0 0 6px ${i % 2 === 0 ? "#fff" : "#ffd700"}`,
-                left: `${8 + i * 10}%`,
-                top: 6,
-                animationDelay: `${i * 0.15}s`,
-              }}
-            />
-          ))}
         </div>
 
         {/* Окно барабанов */}
-        <div className="rounded-xl p-3 mb-3" style={{
-          background: "linear-gradient(135deg, #c8860a, #ffd700, #c8860a)",
-          boxShadow: "0 0 20px rgba(200,134,10,0.6)",
-          border: "3px solid #ffd700",
+        <div className="rounded-2xl p-3 mb-3" style={{
+          background: "linear-gradient(135deg, rgba(0,200,255,0.3), rgba(168,85,247,0.3), rgba(0,200,255,0.3))",
+          boxShadow: "0 0 30px rgba(0,200,255,0.4), 0 0 60px rgba(168,85,247,0.2)",
+          border: "2px solid rgba(0,220,255,0.6)",
         }}>
-          <div className="rounded-lg p-2 flex gap-2" style={{
-            background: "#0a001a",
+          <div className="rounded-xl p-2 flex gap-3" style={{
+            background: "rgba(5,0,20,0.95)",
             boxShadow: "inset 0 0 30px rgba(0,0,0,0.9)",
           }}>
             {[0, 1, 2].map((ri) => (
@@ -281,33 +284,38 @@ function SlotMachine({ onSpin, spinning, reelResults, showResult, winPrize }: {
         </div>
 
         {/* Панель JACKPOT */}
-        <div className="flex items-center justify-center py-2 px-4 rounded-lg mb-4" style={{
-          background: "#111",
-          border: "2px solid #ffd700",
+        <div className="flex items-center justify-center py-2 px-4 rounded-xl mb-4" style={{
+          background: isWin ? "rgba(0,30,60,0.95)" : "rgba(5,0,15,0.9)",
+          border: isWin ? "2px solid rgba(0,230,255,0.8)" : "2px solid rgba(255,255,255,0.08)",
           boxShadow: isWin
-            ? "0 0 20px rgba(255,215,0,0.8), inset 0 0 10px rgba(255,215,0,0.2)"
-            : "0 0 10px rgba(0,0,0,0.5)",
+            ? "0 0 30px rgba(0,200,255,0.6), 0 0 60px rgba(0,100,255,0.3), inset 0 0 20px rgba(0,200,255,0.1)"
+            : "inset 0 0 10px rgba(0,0,0,0.5)",
+          transition: "all 0.4s",
         }}>
           <span className="font-black tracking-widest" style={{
             fontSize: 22,
-            color: isWin ? "#ffd700" : "#555",
-            textShadow: isWin ? "0 0 15px rgba(255,215,0,1)" : "none",
+            color: isWin ? "#00e5ff" : "rgba(255,255,255,0.15)",
+            textShadow: isWin ? "0 0 20px rgba(0,200,255,1), 0 0 40px rgba(0,200,255,0.5)" : "none",
             fontFamily: "serif",
-            transition: "all 0.3s",
+            transition: "all 0.4s",
           }}>
             {isWin ? "🎉 JACKPOT! 🎉" : "JACKPOT"}
           </span>
         </div>
 
-        {/* Кнопки внизу */}
-        <div className="flex gap-4 justify-center">
+        {/* Кнопки внизу неоновые */}
+        <div className="flex gap-5 justify-center pb-1">
           {[
-            { color: "#3b82f6", shadow: "#3b82f6" },
-            { color: "#888", shadow: "#888" },
-            { color: "#ef4444", shadow: "#ef4444" },
+            { color: "#00e5ff", shadow: "rgba(0,200,255,0.8)" },
+            { color: "#a855f7", shadow: "rgba(168,85,247,0.8)" },
+            { color: "#eb459e", shadow: "rgba(235,69,158,0.8)" },
           ].map((btn, i) => (
-            <div key={i} className="w-10 h-10 rounded-full border-4 border-black"
-              style={{ background: btn.color, boxShadow: `0 4px 0 rgba(0,0,0,0.5), 0 0 10px ${btn.shadow}44` }}
+            <div key={i} className="w-11 h-11 rounded-full"
+              style={{
+                background: `radial-gradient(circle at 35% 35%, ${btn.color}cc, ${btn.color}44)`,
+                border: `2px solid ${btn.color}`,
+                boxShadow: `0 4px 0 rgba(0,0,0,0.6), 0 0 16px ${btn.shadow}, 0 0 32px ${btn.shadow}44`,
+              }}
             />
           ))}
         </div>
