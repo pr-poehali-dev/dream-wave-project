@@ -614,9 +614,11 @@ export default function Index() {
 
   // ── Основной экран игры ───────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#36393f] text-white overflow-x-hidden">
+    <div className="min-h-screen text-white overflow-x-hidden"
+      style={{ background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)" }}
+    >
       {/* Навбар */}
-      <nav className="bg-[#2f3136] border-b border-[#202225] px-4 py-3">
+      <nav className="border-b border-purple-900/50 px-4 py-3" style={{ background: "rgba(26,5,51,0.9)", backdropFilter: "blur(10px)" }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#faa61a] rounded-full flex items-center justify-center text-xl">
@@ -671,8 +673,8 @@ export default function Index() {
       {/* Макет Discord */}
       <div className="flex min-h-[calc(100vh-57px)]">
         {/* Боковая панель */}
-        <div className="hidden lg:flex w-60 bg-[#2f3136] flex-col">
-          <div className="p-4 border-b border-[#202225]">
+        <div className="hidden lg:flex w-60 flex-col" style={{ background: "rgba(20,3,40,0.8)", borderRight: "1px solid rgba(139,92,246,0.2)" }}>
+          <div className="p-4" style={{ borderBottom: "1px solid rgba(139,92,246,0.2)" }}>
             <h2 className="text-white font-semibold">🎪 Праздник</h2>
           </div>
           <div className="flex-1 p-2">
@@ -708,7 +710,7 @@ export default function Index() {
           </div>
 
           {/* Пользователь */}
-          <div className="p-2 bg-[#292b2f] flex items-center gap-2">
+          <div className="p-2 flex items-center gap-2" style={{ background: "rgba(10,0,25,0.9)", borderTop: "1px solid rgba(139,92,246,0.2)" }}>
             <div className="w-8 h-8 bg-[#faa61a] rounded-full flex items-center justify-center font-bold text-sm text-[#2f3136]">
               {currentPlayerIndex + 1}
             </div>
@@ -722,7 +724,7 @@ export default function Index() {
         {/* Центр */}
         <div className="flex-1 flex flex-col">
           {/* Заголовок канала */}
-          <div className="h-12 bg-[#36393f] border-b border-[#202225] flex items-center px-4 gap-2">
+          <div className="h-12 flex items-center px-4 gap-2" style={{ background: "rgba(20,3,40,0.6)", borderBottom: "1px solid rgba(139,92,246,0.2)" }}>
             <span className="text-xl">🎰</span>
             <span className="text-white font-semibold">барабан</span>
             <div className="w-px h-5 bg-[#40444b] mx-2" />
@@ -895,14 +897,14 @@ export default function Index() {
 
           {/* Поле сообщения (декор) */}
           <div className="p-3 sm:p-4">
-            <div className="bg-[#40444b] rounded-lg px-4 py-2.5 text-[#72767d] text-sm">
+            <div className="rounded-lg px-4 py-2.5 text-purple-400/50 text-sm" style={{ background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)" }}>
               Сообщение #барабан
             </div>
           </div>
         </div>
 
         {/* Правая панель — участники */}
-        <div className="hidden xl:block w-56 bg-[#2f3136] p-4">
+        <div className="hidden xl:block w-56 p-4" style={{ background: "rgba(20,3,40,0.8)", borderLeft: "1px solid rgba(139,92,246,0.2)" }}>
           <div className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-3">
             Игроки — {playerCount}
           </div>
