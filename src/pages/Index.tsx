@@ -15,7 +15,7 @@ interface Prize {
 const PRIZES: Prize[] = [
   { id: 1, label: "Яблокорезка из нержавейки", emoji: "🍎", color: "#faa61a", winChance: 0.75 },
   { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.45 },
-  { id: 3, label: "3-й приз",  emoji: "🌸", color: "#eb459e", winChance: 0.35 },
+  { id: 3, label: "Чупачупс", emoji: "🍭", color: "#eb459e", winChance: 0.35 },
   { id: 4, label: "Ролик для одежды 60 листов", emoji: "🧹", color: "#3ba55c", winChance: 0.15 },
   { id: 5, label: "Косметичка стильная", emoji: "👜", color: "#ed4245", winChance: 0.05 },
 ];
