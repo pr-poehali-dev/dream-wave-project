@@ -90,6 +90,75 @@ function getPrizeForWindow(window: number): Prize {
   return PRIZES[Math.max(0, Math.min(window, PRIZES.length - 1))];
 }
 
+// ── Рычаг казино ─────────────────────────────────────────────────────────────
+function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) {
+  const [pulled, setPulled] = useState(false);
+
+  function handlePull() {
+    if (disabled || pulled) return;
+    setPulled(true);
+    onPull();
+    setTimeout(() => setPulled(false), 800);
+  }
+
+  return (
+    <div className="flex flex-col items-center select-none" style={{ width: 60 }}>
+      {/* Шарик */}
+      <div
+        onClick={handlePull}
+        className="transition-all duration-300 cursor-pointer"
+        style={{
+          transform: pulled ? "translateY(80px)" : "translateY(0px)",
+          filter: disabled ? "grayscale(1) opacity(0.4)" : "none",
+        }}
+      >
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-lg"
+          style={{
+            background: pulled
+              ? "radial-gradient(circle at 35% 35%, #ff6b6b, #c0392b)"
+              : "radial-gradient(circle at 35% 35%, #ff9999, #e74c3c)",
+            boxShadow: pulled
+              ? "0 2px 8px rgba(231,76,60,0.4)"
+              : "0 4px 16px rgba(231,76,60,0.6)",
+          }}
+        >
+          🎰
+        </div>
+      </div>
+
+      {/* Стержень */}
+      <div
+        className="rounded-full"
+        style={{
+          width: 8,
+          height: pulled ? 40 : 120,
+          marginTop: pulled ? -40 : 0,
+          background: "linear-gradient(180deg, #aaa 0%, #777 50%, #aaa 100%)",
+          boxShadow: "2px 0 4px rgba(0,0,0,0.4)",
+          transition: "height 0.3s, margin-top 0.3s",
+        }}
+      />
+
+      {/* Основание */}
+      <div
+        className="rounded-lg"
+        style={{
+          width: 24,
+          height: 40,
+          background: "linear-gradient(180deg, #555 0%, #333 100%)",
+          boxShadow: "0 4px 8px rgba(0,0,0,0.5)",
+        }}
+      />
+
+      {/* Подпись */}
+      <div className="text-[#8e9297] text-xs mt-2 text-center">
+        {disabled ? "⏳" : "Дёрни!"}
+      </div>
+    </div>
+  );
+}
+
 // ── Колесо ────────────────────────────────────────────────────────────────────
 function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
   return (
@@ -665,8 +734,16 @@ export default function Index() {
               );
             })()}
 
-            {/* Колесо */}
-            <Wheel angle={wheelAngle} spinning={spinning} />
+            {/* Колесо + Рычаг */}
+            <div className="flex items-center gap-4">
+              <Wheel angle={wheelAngle} spinning={spinning} />
+              {player && (player.phase === "idle" || player.phase === "spinning" || !player.phase) && (
+                <Lever
+                  onPull={spin}
+                  disabled={spinning || player.spinsUsed >= TOTAL_SPINS}
+                />
+              )}
+            </div>
 
             {/* Прогресс */}
             {player && (
@@ -724,22 +801,12 @@ export default function Index() {
                   </div>
                 )}
 
-                {/* Крутить */}
-                {(player.phase === "idle" || player.phase === "spinning" || !player.phase) && (
-                  <button
-                    onClick={spin}
-                    disabled={spinning || player.spinsUsed >= TOTAL_SPINS}
-                    className="w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      background: spinning
-                        ? "#40444b"
-                        : "linear-gradient(135deg, #5865f2, #faa61a)",
-                      color: "#fff",
-                      boxShadow: spinning ? "none" : "0 4px 20px rgba(88,101,242,0.4)",
-                    }}
-                  >
-                    {spinning ? "🌀 Крутится…" : "🎰 Крутить барабан!"}
-                  </button>
+                {/* Подсказка во время кручения */}
+                {(player.phase === "idle" || player.phase === "spinning" || !player.phase) && spinning && (
+                  <div className="w-full py-3 rounded-xl text-center font-bold text-lg"
+                    style={{ background: "#40444b", color: "#fff" }}>
+                    🌀 Крутится…
+                  </div>
                 )}
 
                 {/* Утешительный */}
