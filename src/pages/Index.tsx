@@ -496,39 +496,71 @@ export default function Index() {
   // ── Экран выбора игроков ──────────────────────────────────────────────────
   if (playerCount === null) {
     return (
-      <div className="min-h-screen bg-[#36393f] flex flex-col items-center justify-center p-6">
-        <div className="text-center mb-10">
-          <div className="text-7xl mb-4 animate-bounce">🎂</div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-2">
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+        style={{
+          background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)",
+        }}
+      >
+        {/* Конфетти-звёзды */}
+        {["🎉","✨","🎊","🍭","🎁","⭐","🎈","💫","🎀","🌟"].map((em, i) => (
+          <div
+            key={i}
+            className="absolute text-3xl pointer-events-none animate-bounce"
+            style={{
+              left: `${5 + i * 9}%`,
+              top: `${10 + (i % 3) * 25}%`,
+              animationDelay: `${i * 0.3}s`,
+              animationDuration: `${1.5 + (i % 3) * 0.5}s`,
+              opacity: 0.7,
+            }}
+          >
+            {em}
+          </div>
+        ))}
+
+        {/* Цветные круги-блики */}
+        <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(235,69,158,0.25) 0%, transparent 70%)" }} />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(88,101,242,0.25) 0%, transparent 70%)" }} />
+        <div className="absolute top-1/2 left-0 w-64 h-64 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(250,166,26,0.2) 0%, transparent 70%)" }} />
+
+        {/* Контент */}
+        <div className="relative z-10 text-center">
+          <div className="text-8xl mb-6" style={{ filter: "drop-shadow(0 0 30px rgba(250,166,26,0.8))" }}>
+            🎂
+          </div>
+          <h1
+            className="text-5xl sm:text-6xl font-bold mb-3"
+            style={{
+              background: "linear-gradient(135deg, #faa61a, #eb459e, #5865f2)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              filter: "drop-shadow(0 0 20px rgba(235,69,158,0.5))",
+            }}
+          >
             Барабан Удачи
           </h1>
-          <p className="text-[#b9bbbe] text-lg">С днём рождения, мамочка! 🎉</p>
-        </div>
-
-        <div className="bg-[#2f3136] border border-[#202225] rounded-xl p-8 w-full max-w-md">
-          <h2 className="text-white font-semibold text-xl mb-2 text-center">
-            Сколько участников?
-          </h2>
-          <p className="text-[#8e9297] text-sm text-center mb-6">
-            Максимум {MAX_PLAYERS} человека
+          <p className="text-pink-200 text-xl mb-12 font-medium">
+            С днём рождения, мамочка! 🎉
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map((n) => (
-              <button
-                key={n}
-                onClick={() => startGame(n)}
-                className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border border-[#40444b] hover:border-[#5865f2] hover:bg-[#5865f2]/10 transition-all group"
-              >
-                <span className="text-3xl">{["👤", "👥", "👨‍👩‍👦", "👨‍👩‍👧‍👦"][n - 1]}</span>
-                <span className="text-white font-bold text-xl group-hover:text-[#5865f2] transition-colors">
-                  {n}
-                </span>
-                <span className="text-[#8e9297] text-xs">
-                  {n === 1 ? "участник" : n < 5 ? "участника" : "участников"}
-                </span>
-              </button>
-            ))}
-          </div>
+
+          <button
+            onClick={() => startGame(1)}
+            className="px-16 py-5 rounded-2xl font-bold text-2xl text-white transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: "linear-gradient(135deg, #eb459e, #faa61a)",
+              boxShadow: "0 0 40px rgba(235,69,158,0.6), 0 8px 32px rgba(0,0,0,0.4)",
+            }}
+          >
+            🎰 Играть!
+          </button>
+
+          <p className="text-purple-300 text-sm mt-6 opacity-70">
+            5 призов · 25 прокрутов · 1 победитель
+          </p>
         </div>
       </div>
     );
