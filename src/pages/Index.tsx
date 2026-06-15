@@ -780,15 +780,16 @@ export default function Index() {
                   key={pr.id}
                   className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm mb-1 transition-all"
                   style={{
-                    background: inWindow ? `${pr.color}25` : "transparent",
-                    color: inWindow ? pr.color : "rgba(168,85,247,0.5)",
-                    border: inWindow ? `1px solid ${pr.color}44` : "1px solid transparent",
-                    boxShadow: inWindow ? `0 0 10px ${pr.color}22` : "none",
+                    background: inWindow ? `${pr.color}25` : "rgba(255,255,255,0.03)",
+                    color: inWindow ? pr.color : "#ffffff",
+                    border: inWindow ? `1px solid ${pr.color}88` : "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: inWindow ? `0 0 14px ${pr.color}44, 0 0 4px ${pr.color}22` : "none",
+                    textShadow: inWindow ? `0 0 8px ${pr.color}` : "0 0 6px rgba(255,255,255,0.3)",
                   }}
                 >
                   <span className="text-base">{pr.emoji}</span>
-                  <span className="flex-1 truncate text-xs">{pr.label}</span>
-                  <span className="text-xs font-bold opacity-80">{Math.round(pr.winChance * 100)}%</span>
+                  <span className="flex-1 truncate text-xs font-medium">{pr.label}</span>
+                  <span className="text-xs font-bold" style={{ color: inWindow ? pr.color : "rgba(255,255,255,0.5)" }}>{Math.round(pr.winChance * 100)}%</span>
                 </div>
               );
             })}
@@ -930,8 +931,14 @@ export default function Index() {
 
                 {/* Подсказка во время кручения */}
                 {(player.phase === "idle" || player.phase === "spinning" || !player.phase) && spinning && (
-                  <div className="w-full py-3 rounded-xl text-center font-bold text-lg"
-                    style={{ background: "#40444b", color: "#fff" }}>
+                  <div className="w-full py-4 rounded-xl text-center font-bold text-lg"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(0,200,255,0.15), rgba(0,100,255,0.1))",
+                      border: "1px solid rgba(0,200,255,0.5)",
+                      color: "#00e5ff",
+                      boxShadow: "0 0 20px rgba(0,200,255,0.3), 0 0 40px rgba(0,100,255,0.15)",
+                      textShadow: "0 0 10px rgba(0,200,255,0.8)",
+                    }}>
                     🌀 Крутится…
                   </div>
                 )}
