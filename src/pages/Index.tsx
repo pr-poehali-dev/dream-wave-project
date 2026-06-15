@@ -159,17 +159,25 @@ function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) 
   );
 }
 
-// Цвета секторов колеса (яркие, праздничные)
+// Цвета секторов колеса (яркие, праздничные) — все в голубом неоновом стиле
 const NEON_SECTORS = [
-  { emoji: "🍭", label: "Чупачупс",   color: "#ff2d78" },
-  { emoji: "🎁", label: "Подарок",    color: "#faa61a" },
-  { emoji: "👑", label: "Косметика",  color: "#a855f7" },
-  { emoji: "⭐", label: "Органайзер", color: "#3b82f6" },
-  { emoji: "🎉", label: "Удача!",     color: "#10b981" },
-  { emoji: "💎", label: "Яблорезка",  color: "#f43f5e" },
-  { emoji: "🌟", label: "Ролик",      color: "#f59e0b" },
-  { emoji: "🎀", label: "Сюрприз",    color: "#8b5cf6" },
+  { emoji: "🍭", label: "Чупачупс",   color: "#00e5ff" },
+  { emoji: "🎁", label: "Подарок",    color: "#0091ff" },
+  { emoji: "👑", label: "Косметика",  color: "#00cfff" },
+  { emoji: "⭐", label: "Органайзер", color: "#006fff" },
+  { emoji: "🎉", label: "Удача!",     color: "#00b8ff" },
+  { emoji: "💎", label: "Яблорезка",  color: "#0055ff" },
+  { emoji: "🌟", label: "Ролик",      color: "#00d4ff" },
+  { emoji: "🎀", label: "Сюрприз",    color: "#0077ff" },
 ];
+
+const WIN_SOUND = "https://cdn.discordapp.com/attachments/1407625036667293818/1515959445455114270/GameboyJones_-_HIT_THE_JACKPOT_Hakari_Dance_80967376_cut_17sec.mp3?ex=6a30e6c0&is=6a2f9540&hm=db43b7fda22bf85f0f1e7c8674573263f7b144500dd4cc7705a2680822af3184&";
+
+function playWinSound() {
+  const audio = new Audio(WIN_SOUND);
+  audio.volume = 0.8;
+  audio.play().catch(() => null);
+}
 
 // ── Колесо ────────────────────────────────────────────────────────────────────
 function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
@@ -470,6 +478,7 @@ export default function Index() {
           pendingPrize = prize;
           wonPrizes = [...p.wonPrizes, prize];
           newPhase = "won";
+          playWinSound();
         } else {
           log.push(`Не выпало. Продолжаем…`);
 
@@ -885,41 +894,59 @@ export default function Index() {
               <div className="w-full max-w-sm space-y-3">
                 {/* Состояние: выиграли — берём или продолжаем */}
                 {player.phase === "won" && player.pendingPrize && (
-                  <div className="bg-[#2f3136] border border-[#faa61a] rounded-xl p-4 text-center">
+                  <div className="rounded-xl p-4 text-center" style={{
+                    background: "linear-gradient(135deg, rgba(0,50,80,0.9), rgba(0,20,60,0.95))",
+                    border: "1px solid rgba(0,220,255,0.6)",
+                    boxShadow: "0 0 30px rgba(0,200,255,0.3), 0 0 60px rgba(0,100,255,0.15), inset 0 0 30px rgba(0,200,255,0.05)",
+                  }}>
                     {PRIZE_IMAGES[player.pendingPrize.id] ? (
                       <img
                         src={PRIZE_IMAGES[player.pendingPrize.id]}
                         alt={player.pendingPrize.label}
-                        className="w-36 h-36 object-cover rounded-xl mx-auto mb-3 border-2 border-[#faa61a]"
+                        className="w-36 h-36 object-cover rounded-xl mx-auto mb-3"
+                        style={{ border: "2px solid rgba(0,220,255,0.8)", boxShadow: "0 0 16px rgba(0,200,255,0.5)" }}
                       />
                     ) : (
                       <div className="text-3xl mb-2">{player.pendingPrize.emoji}</div>
                     )}
-                    <div className="text-white font-bold mb-1">
+                    <div className="font-bold mb-1 text-lg" style={{ color: "#00e5ff", textShadow: "0 0 10px rgba(0,200,255,0.8)" }}>
                       🎉 Выпало: {player.pendingPrize.label}!
                     </div>
-                    <p className="text-[#b9bbbe] text-xs mb-4">
+                    <p className="text-xs mb-4" style={{ color: "rgba(0,200,255,0.6)" }}>
                       Взять приз сейчас или рискнуть на следующее окно?
                     </p>
                     <div className="flex gap-3">
                       <button
                         onClick={takePrize}
                         className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
-                        style={{ background: "#3ba55c", color: "#fff" }}
+                        style={{
+                          background: "linear-gradient(135deg, rgba(0,180,255,0.3), rgba(0,100,255,0.2))",
+                          border: "1px solid rgba(0,220,255,0.7)",
+                          color: "#00e5ff",
+                          boxShadow: "0 0 14px rgba(0,200,255,0.4)",
+                          textShadow: "0 0 6px rgba(0,200,255,0.6)",
+                        }}
                       >
                         ✅ Взять приз!
                       </button>
                       {player.currentWindow < PRIZES.length - 1 ? (
                         <button
                           onClick={continueSpin}
-                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm border border-[#ed4245] text-[#ed4245] hover:bg-[#ed4245]/10 transition-all"
+                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+                          style={{
+                            background: "linear-gradient(135deg, rgba(0,50,255,0.2), rgba(0,20,150,0.2))",
+                            border: "1px solid rgba(0,150,255,0.5)",
+                            color: "#60b4ff",
+                            boxShadow: "0 0 10px rgba(0,100,255,0.3)",
+                          }}
                         >
                           🎲 Рискнуть
                         </button>
                       ) : (
                         <button
                           onClick={takePrize}
-                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm border border-[#40444b] text-[#8e9297] cursor-not-allowed"
+                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm cursor-not-allowed"
+                          style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)" }}
                           disabled
                         >
                           Это макс.
