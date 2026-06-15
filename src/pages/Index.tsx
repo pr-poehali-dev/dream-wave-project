@@ -28,7 +28,7 @@ const PRIZE_IMAGES: Record<number, string> = {
   5: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/769fc24c-1ac5-4957-a020-c147188c60da.png",
 };
 
-const CONSOLATION = { label: "Утешительный приз", emoji: "🎁", color: "#72767d" };
+const CONSOLATION = { label: "Чупачупс", emoji: "🍭", color: "#ed4245" };
 
 // Сколько прокрутов в каждом «окне» (5 прокрутов → 1 окно)
 const WINDOW_SIZE = 5;
