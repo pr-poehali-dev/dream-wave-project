@@ -159,84 +159,154 @@ function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) 
   );
 }
 
+// Цвета секторов колеса (яркие, праздничные)
+const NEON_SECTORS = [
+  { emoji: "🍭", color: "#ff2d78", glow: "#ff2d78" },
+  { emoji: "🎁", color: "#faa61a", glow: "#faa61a" },
+  { emoji: "👑", color: "#a855f7", glow: "#a855f7" },
+  { emoji: "⭐", color: "#3b82f6", glow: "#3b82f6" },
+  { emoji: "🎉", color: "#10b981", glow: "#10b981" },
+  { emoji: "💎", color: "#f43f5e", glow: "#f43f5e" },
+  { emoji: "🌟", color: "#f59e0b", glow: "#f59e0b" },
+  { emoji: "🎀", color: "#8b5cf6", glow: "#8b5cf6" },
+];
+
 // ── Колесо ────────────────────────────────────────────────────────────────────
 function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
-      {/* Внешнее кольцо */}
-      <div
-        className="absolute inset-0 rounded-full"
-        style={{
-          background: "conic-gradient(from 0deg, #202225 0%, #36393f 50%, #202225 100%)",
-          boxShadow: "0 0 40px rgba(88,101,242,0.4), inset 0 0 20px rgba(0,0,0,0.5)",
-        }}
-      />
+  const R = 150;
+  const sectors = NEON_SECTORS;
+  const count = sectors.length;
+  const sectorAngle = 360 / count;
 
-      {/* Колесо */}
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 340, height: 340 }}>
+
+      {/* Неоновое свечение вокруг */}
+      <div className="absolute inset-0 rounded-full pointer-events-none" style={{
+        boxShadow: spinning
+          ? "0 0 60px #eb459e, 0 0 120px rgba(235,69,158,0.5), 0 0 180px rgba(88,101,242,0.3)"
+          : "0 0 40px #a855f7, 0 0 80px rgba(168,85,247,0.4), 0 0 120px rgba(88,101,242,0.2)",
+        borderRadius: "50%",
+        transition: "box-shadow 0.5s",
+      }} />
+
+      {/* Внешнее декоративное кольцо с шариками */}
+      <svg className="absolute" width="340" height="340" viewBox="0 0 340 340">
+        <defs>
+          <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#faa61a" />
+            <stop offset="33%" stopColor="#eb459e" />
+            <stop offset="66%" stopColor="#5865f2" />
+            <stop offset="100%" stopColor="#faa61a" />
+          </linearGradient>
+          {sectors.map((s, i) => (
+            <radialGradient key={i} id={`grad${i}`} cx="40%" cy="40%" r="60%">
+              <stop offset="0%" stopColor={s.color} stopOpacity="1" />
+              <stop offset="100%" stopColor={s.color} stopOpacity="0.6" />
+            </radialGradient>
+          ))}
+        </defs>
+        {/* Кольцо */}
+        <circle cx="170" cy="170" r="165" fill="none" stroke="url(#ringGrad)" strokeWidth="6" opacity="0.9" />
+        <circle cx="170" cy="170" r="158" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        {/* Декоративные шарики по кольцу */}
+        {Array.from({ length: 16 }).map((_, i) => {
+          const a = (i * 22.5 - 90) * (Math.PI / 180);
+          const x = 170 + 165 * Math.cos(a);
+          const y = 170 + 165 * Math.sin(a);
+          const colors = ["#faa61a","#eb459e","#5865f2","#3ba55c"];
+          return <circle key={i} cx={x} cy={y} r="5" fill={colors[i % 4]} opacity="0.9" style={{ filter: `drop-shadow(0 0 4px ${colors[i % 4]})` }} />;
+        })}
+      </svg>
+
+      {/* Сам барабан */}
       <div
         className="absolute rounded-full overflow-hidden"
         style={{
-          width: 260,
-          height: 260,
+          width: 300,
+          height: 300,
           transform: `rotate(${angle}deg)`,
-          transition: spinning ? "transform 3s cubic-bezier(0.17, 0.67, 0.12, 0.99)" : "none",
+          transition: spinning ? "transform 3.5s cubic-bezier(0.15, 0.6, 0.1, 1.0)" : "none",
+          boxShadow: "inset 0 0 30px rgba(0,0,0,0.6)",
         }}
       >
-        <svg width="260" height="260" viewBox="0 0 260 260">
-          {WHEEL_SECTORS.map((sector, i) => {
-            const startAngle = (i * SECTOR_ANGLE - 90) * (Math.PI / 180);
-            const endAngle = ((i + 1) * SECTOR_ANGLE - 90) * (Math.PI / 180);
-            const x1 = 130 + 130 * Math.cos(startAngle);
-            const y1 = 130 + 130 * Math.sin(startAngle);
-            const x2 = 130 + 130 * Math.cos(endAngle);
-            const y2 = 130 + 130 * Math.sin(endAngle);
-            const midAngle = ((i + 0.5) * SECTOR_ANGLE - 90) * (Math.PI / 180);
-            const textX = 130 + 80 * Math.cos(midAngle);
-            const textY = 130 + 80 * Math.sin(midAngle);
+        <svg width="300" height="300" viewBox="0 0 300 300">
+          <defs>
+            {sectors.map((s, i) => (
+              <radialGradient key={i} id={`sg${i}`} cx="50%" cy="100%" r="80%">
+                <stop offset="0%" stopColor="#fff" stopOpacity="0.15" />
+                <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+              </radialGradient>
+            ))}
+          </defs>
+
+          {sectors.map((sector, i) => {
+            const startA = (i * sectorAngle - 90) * (Math.PI / 180);
+            const endA = ((i + 1) * sectorAngle - 90) * (Math.PI / 180);
+            const x1 = 150 + R * Math.cos(startA);
+            const y1 = 150 + R * Math.sin(startA);
+            const x2 = 150 + R * Math.cos(endA);
+            const y2 = 150 + R * Math.sin(endA);
+            const midA = ((i + 0.5) * sectorAngle - 90) * (Math.PI / 180);
+            const tx = 150 + 95 * Math.cos(midA);
+            const ty = 150 + 95 * Math.sin(midA);
             return (
               <g key={i}>
+                {/* Основной сектор */}
                 <path
-                  d={`M 130 130 L ${x1} ${y1} A 130 130 0 0 1 ${x2} ${y2} Z`}
+                  d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`}
                   fill={sector.color}
-                  stroke="#202225"
-                  strokeWidth="2"
-                  opacity="0.85"
                 />
-                <text
-                  x={textX}
-                  y={textY}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize="22"
-                  style={{ userSelect: "none" }}
-                >
+                {/* Бликовый слой */}
+                <path
+                  d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`}
+                  fill={`url(#sg${i})`}
+                />
+                {/* Разделитель */}
+                <line
+                  x1="150" y1="150" x2={x1} y2={y1}
+                  stroke="rgba(0,0,0,0.4)" strokeWidth="2"
+                />
+                {/* Эмодзи */}
+                <text x={tx} y={ty} textAnchor="middle" dominantBaseline="central" fontSize="26" style={{ userSelect: "none" }}>
                   {sector.emoji}
                 </text>
               </g>
             );
           })}
-          {/* Центральный круг */}
-          <circle cx="130" cy="130" r="28" fill="#2f3136" stroke="#202225" strokeWidth="3" />
-          <text x="130" y="130" textAnchor="middle" dominantBaseline="central" fontSize="20">🎂</text>
+
+          {/* Центральный диск */}
+          <circle cx="150" cy="150" r="32" fill="#0d001a" stroke="#faa61a" strokeWidth="3" />
+          <circle cx="150" cy="150" r="28" fill="none" stroke="rgba(250,166,26,0.3)" strokeWidth="1" />
+          <text x="150" y="150" textAnchor="middle" dominantBaseline="central" fontSize="24">🎂</text>
         </svg>
       </div>
 
-      {/* Стрелка-указатель */}
-      <div
-        className="absolute"
-        style={{
-          top: -8,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 0,
-          height: 0,
-          borderLeft: "12px solid transparent",
-          borderRight: "12px solid transparent",
-          borderTop: "24px solid #faa61a",
-          filter: "drop-shadow(0 2px 4px rgba(250,166,26,0.6))",
-          zIndex: 10,
-        }}
-      />
+      {/* Стрелка-указатель неоновая */}
+      <div className="absolute z-10" style={{ top: 2, left: "50%", transform: "translateX(-50%)" }}>
+        <svg width="28" height="36" viewBox="0 0 28 36">
+          <defs>
+            <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fff" />
+              <stop offset="100%" stopColor="#faa61a" />
+            </linearGradient>
+          </defs>
+          <polygon points="14,0 28,36 0,36" fill="url(#arrowGrad)" style={{ filter: "drop-shadow(0 0 8px #faa61a) drop-shadow(0 0 16px rgba(250,166,26,0.8))" }} />
+        </svg>
+      </div>
+
+      {/* Пульсирующие точки по бокам (декор) */}
+      {spinning && [0,90,180,270].map((deg, i) => {
+        const rad = (deg - 90) * Math.PI / 180;
+        const x = 170 + 145 * Math.cos(rad);
+        const y = 170 + 145 * Math.sin(rad);
+        return (
+          <div key={i} className="absolute w-3 h-3 rounded-full animate-ping" style={{
+            left: x - 6, top: y - 6,
+            background: ["#faa61a","#eb459e","#5865f2","#3ba55c"][i],
+          }} />
+        );
+      })}
     </div>
   );
 }
