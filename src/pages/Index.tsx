@@ -1,23 +1,21 @@
-import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import Icon from "@/components/ui/icon";
+import { useState, useEffect, useRef } from "react";
 
-// ── Типы призов ──────────────────────────────────────────────────────────────
+// ── Призы ────────────────────────────────────────────────────────────────────
 interface Prize {
   id: number;
   label: string;
   emoji: string;
   color: string;
-  winChance: number; // шанс выпадения в своём окне (5 прокрутов)
+  winChance: number;
+  symbol: string; // символ на барабане
 }
 
-// Призы в порядке ценности (1й — самый ценный)
 const PRIZES: Prize[] = [
-  { id: 1, label: "Чупачупс", emoji: "🍭", color: "#ed4245", winChance: 0.75 },
-  { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.45 },
-  { id: 3, label: "Яблокорезка из нержавейки", emoji: "🍎", color: "#faa61a", winChance: 0.35 },
-  { id: 4, label: "Ролик для одежды 60 листов", emoji: "🧹", color: "#3ba55c", winChance: 0.15 },
-  { id: 5, label: "Косметичка стильная", emoji: "👜", color: "#eb459e", winChance: 0.05 },
+  { id: 1, label: "Чупачупс",              emoji: "🍭", color: "#ed4245", winChance: 0.75, symbol: "cherry"  },
+  { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.45, symbol: "lemon"   },
+  { id: 3, label: "Яблокорезка",            emoji: "🍎", color: "#faa61a", winChance: 0.35, symbol: "apple"   },
+  { id: 4, label: "Ролик для одежды",       emoji: "🧹", color: "#3ba55c", winChance: 0.15, symbol: "grape"   },
+  { id: 5, label: "Косметичка стильная",    emoji: "👜", color: "#eb459e", winChance: 0.05, symbol: "seven"   },
 ];
 
 const PRIZE_IMAGES: Record<number, string> = {
@@ -29,68 +27,130 @@ const PRIZE_IMAGES: Record<number, string> = {
 };
 
 const CONSOLATION = { label: "Чупачупс", emoji: "🍭", color: "#ed4245" };
-
-// Сколько прокрутов в каждом «окне» (5 прокрутов → 1 окно)
-const WINDOW_SIZE = 5;
 const TOTAL_SPINS = 25;
-const MAX_PLAYERS = 4;
+const WINDOW_SIZE = 5;
 
-// Сектора на колесе (8 штук, смешаны)
-const WHEEL_SECTORS = [
-  { emoji: "👑", color: "#faa61a" },
-  { emoji: "💎", color: "#5865f2" },
-  { emoji: "🌸", color: "#eb459e" },
-  { emoji: "🎀", color: "#3ba55c" },
-  { emoji: "✨", color: "#ed4245" },
-  { emoji: "💫", color: "#4752c4" },
-  { emoji: "🎂", color: "#c27c0e" },
-  { emoji: "🏆", color: "#3b82f6" },
-];
+// Символы на барабанах (8 штук, повторяются)
+const REEL_SYMBOLS = ["🍎","🍋","❤️","🍒","🎰","🔔","7️⃣","🍇","🍉","⭐"];
 
-const SECTOR_COUNT = WHEEL_SECTORS.length;
-const SECTOR_ANGLE = 360 / SECTOR_COUNT;
+const WIN_SOUND_URL = "https://cdn.discordapp.com/attachments/1407625036667293818/1515959445455114270/GameboyJones_-_HIT_THE_JACKPOT_Hakari_Dance_80967376_cut_17sec.mp3?ex=6a30e6c0&is=6a2f9540&hm=db43b7fda22bf85f0f1e7c8674573263f7b144500dd4cc7705a2680822af3184&";
 
-// ── Типы состояния игры ───────────────────────────────────────────────────────
-type GamePhase =
-  | "idle"        // ещё не начали
-  | "spinning"    // барабан крутится
-  | "won"         // выиграли — предлагаем взять или крутить дальше
-  | "took"        // взяли приз — игра окончена
-  | "lost"        // остановились на уже выигранном но потом проиграли
-  | "consolation" // получили утешительный
-  | "done";       // финал (все 25 прокрутов)
+function playWinSound() {
+  const audio = new Audio(WIN_SOUND_URL);
+  audio.volume = 0.8;
+  audio.play().catch(() => null);
+}
+
+// ── Типы ──────────────────────────────────────────────────────────────────────
+type GamePhase = "idle" | "spinning" | "won" | "took" | "consolation";
 
 interface PlayerState {
-  id: number;
-  spinsUsed: number;      // всего прокрутов использовано
-  currentWindow: number;  // текущее «окно» 0-4 (каждое = 5 прокрутов)
-  spinsInWindow: number;  // прокрутов в текущем окне
-  wonPrizes: Prize[];     // выигранные призы (накопленные)
-  pendingPrize: Prize | null; // приз, который сейчас предлагают взять
+  spinsUsed: number;
+  currentWindow: number;
+  spinsInWindow: number;
+  wonPrizes: Prize[];
+  pendingPrize: Prize | null;
   phase: GamePhase;
-  log: string[];          // лог событий
+  log: string[];
 }
 
-function makePlayer(id: number): PlayerState {
-  return {
-    id,
-    spinsUsed: 0,
-    currentWindow: 0,
-    spinsInWindow: 0,
-    wonPrizes: [],
-    pendingPrize: null,
-    phase: "idle",
-    log: [],
-  };
+function makePlayer(): PlayerState {
+  return { spinsUsed: 0, currentWindow: 0, spinsInWindow: 0, wonPrizes: [], pendingPrize: null, phase: "idle", log: [] };
 }
 
-// Определяем приз для текущего окна (окна 0-4)
-function getPrizeForWindow(window: number): Prize {
-  // окно 0 → приз 1 (Чупачупс), окно 4 → приз 5 (Косметика)
-  return PRIZES[Math.max(0, Math.min(window, PRIZES.length - 1))];
+function getPrizeForWindow(w: number): Prize {
+  return PRIZES[Math.max(0, Math.min(w, PRIZES.length - 1))];
 }
 
-// ── Рычаг казино ─────────────────────────────────────────────────────────────
+// ── Один барабан ──────────────────────────────────────────────────────────────
+function Reel({ symbols, spinning, finalIndex, delay }: {
+  symbols: string[];
+  spinning: boolean;
+  finalIndex: number;
+  delay: number;
+}) {
+  const ITEM_H = 90;
+  const visible = 3;
+  const [offset, setOffset] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const prevSpinning = useRef(false);
+
+  useEffect(() => {
+    if (spinning && !prevSpinning.current) {
+      setIsAnimating(true);
+    }
+    if (!spinning && prevSpinning.current) {
+      setTimeout(() => {
+        setOffset(finalIndex * ITEM_H);
+        setTimeout(() => setIsAnimating(false), 400);
+      }, delay);
+    }
+    prevSpinning.current = spinning;
+  }, [spinning, finalIndex, delay]);
+
+  const loopedSymbols = [...symbols, ...symbols, ...symbols];
+  const translateY = isAnimating
+    ? undefined
+    : -(offset % (symbols.length * ITEM_H));
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl"
+      style={{
+        width: 100,
+        height: ITEM_H * visible,
+        background: "linear-gradient(180deg, #0a001a 0%, #1a0533 50%, #0a001a 100%)",
+        border: "2px solid rgba(0,220,255,0.4)",
+        boxShadow: "inset 0 0 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,200,255,0.2)",
+      }}
+    >
+      {/* Подсветка центральной строки */}
+      <div className="absolute inset-x-0 z-10 pointer-events-none" style={{
+        top: ITEM_H,
+        height: ITEM_H,
+        background: "linear-gradient(180deg, rgba(0,200,255,0.08) 0%, rgba(0,200,255,0.15) 50%, rgba(0,200,255,0.08) 100%)",
+        borderTop: "1px solid rgba(0,220,255,0.4)",
+        borderBottom: "1px solid rgba(0,220,255,0.4)",
+      }} />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          transform: translateY !== undefined ? `translateY(${translateY}px)` : undefined,
+          transition: isAnimating ? "none" : "transform 0.3s ease-out",
+          animation: isAnimating ? `reelSpin 0.15s linear infinite` : "none",
+        }}
+      >
+        {loopedSymbols.map((sym, i) => (
+          <div
+            key={i}
+            style={{
+              height: ITEM_H,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 48,
+              flexShrink: 0,
+            }}
+          >
+            {sym}
+          </div>
+        ))}
+      </div>
+
+      {/* Верхняя/нижняя тени */}
+      <div className="absolute inset-x-0 top-0 h-16 pointer-events-none z-10" style={{
+        background: "linear-gradient(180deg, #0a001a 0%, transparent 100%)"
+      }} />
+      <div className="absolute inset-x-0 bottom-0 h-16 pointer-events-none z-10" style={{
+        background: "linear-gradient(0deg, #0a001a 0%, transparent 100%)"
+      }} />
+    </div>
+  );
+}
+
+// ── Рычаг ─────────────────────────────────────────────────────────────────────
 function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) {
   const [pulled, setPulled] = useState(false);
 
@@ -98,280 +158,223 @@ function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) 
     if (disabled || pulled) return;
     setPulled(true);
     onPull();
-    setTimeout(() => setPulled(false), 800);
+    setTimeout(() => setPulled(false), 700);
   }
 
   return (
-    <div className="flex flex-col items-center select-none" style={{ width: 60 }}>
-      {/* Шарик */}
-      <div
-        onClick={handlePull}
-        className="transition-all duration-300 cursor-pointer"
+    <div className="flex flex-col items-center cursor-pointer select-none" onClick={handlePull} style={{ width: 50 }}>
+      {/* Шар */}
+      <div className="transition-all duration-300 w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold"
         style={{
-          transform: pulled ? "translateY(80px)" : "translateY(0px)",
-          filter: disabled ? "grayscale(1) opacity(0.4)" : "none",
-        }}
-      >
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-lg"
-          style={{
-            background: pulled
-              ? "radial-gradient(circle at 35% 35%, #ff6b6b, #c0392b)"
-              : "radial-gradient(circle at 35% 35%, #ff9999, #e74c3c)",
-            boxShadow: pulled
-              ? "0 2px 8px rgba(231,76,60,0.4)"
-              : "0 4px 16px rgba(231,76,60,0.6)",
-          }}
-        >
-          🎰
+          transform: pulled ? "translateY(70px)" : "translateY(0)",
+          background: pulled
+            ? "radial-gradient(circle at 35% 35%, #ff6b6b, #c0392b)"
+            : "radial-gradient(circle at 35% 35%, #ff9999, #e74c3c)",
+          boxShadow: pulled ? "0 2px 8px rgba(231,76,60,0.5)" : "0 0 20px rgba(231,76,60,0.8), 0 4px 16px rgba(0,0,0,0.4)",
+        }}>
+        🎰
+      </div>
+      {/* Стержень */}
+      <div className="rounded-full" style={{
+        width: 10,
+        height: pulled ? 30 : 100,
+        marginTop: pulled ? -30 : 0,
+        background: "linear-gradient(180deg, #bbb 0%, #888 50%, #bbb 100%)",
+        boxShadow: "2px 0 6px rgba(0,0,0,0.5)",
+        transition: "height 0.3s, margin-top 0.3s",
+      }} />
+      {/* Основание */}
+      <div className="rounded-lg" style={{
+        width: 26,
+        height: 36,
+        background: "linear-gradient(180deg, #666 0%, #333 100%)",
+        boxShadow: "0 4px 8px rgba(0,0,0,0.6)",
+      }} />
+      <div className="text-xs mt-2 font-bold" style={{
+        color: disabled ? "rgba(255,255,255,0.2)" : "#00e5ff",
+        textShadow: disabled ? "none" : "0 0 8px rgba(0,200,255,0.8)",
+      }}>
+        {disabled ? "⏳" : "PULL"}
+      </div>
+    </div>
+  );
+}
+
+// ── Слот-машина ───────────────────────────────────────────────────────────────
+function SlotMachine({ onSpin, spinning, reelResults, showResult, winPrize }: {
+  onSpin: () => void;
+  spinning: boolean;
+  reelResults: number[];
+  showResult: boolean;
+  winPrize: Prize | null;
+}) {
+  const isWin = showResult && winPrize !== null;
+
+  return (
+    <div className="relative flex flex-col items-center">
+
+      {/* Корпус машины */}
+      <div className="relative" style={{
+        background: "linear-gradient(180deg, #8B4513 0%, #6B3410 40%, #4a2008 100%)",
+        borderRadius: "24px 24px 12px 12px",
+        padding: "0 20px 20px",
+        boxShadow: "0 0 40px rgba(0,0,0,0.8), 0 0 80px rgba(0,0,0,0.5)",
+        border: "3px solid #c8860a",
+      }}>
+
+        {/* Арка сверху */}
+        <div className="flex items-center justify-center py-4 relative">
+          <div className="absolute inset-0 rounded-t-2xl" style={{
+            background: "linear-gradient(180deg, #ffd700 0%, #c8860a 100%)",
+            margin: "-3px -3px 0",
+            borderRadius: "21px 21px 0 0",
+          }} />
+          <div className="relative z-10 text-center">
+            <div className="font-black italic" style={{
+              fontSize: 18,
+              color: "#c0392b",
+              textShadow: "0 0 10px rgba(192,57,43,0.8), 2px 2px 0 #8b0000",
+              fontFamily: "serif",
+            }}>Mega</div>
+            <div className="font-black" style={{
+              fontSize: 28,
+              color: "#ffd700",
+              textShadow: "0 0 15px rgba(255,215,0,0.8), 2px 2px 0 #8B4513",
+              letterSpacing: 4,
+              fontFamily: "serif",
+            }}>SLOTS</div>
+          </div>
+          {/* Лампочки по арке */}
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="absolute w-3 h-3 rounded-full animate-pulse"
+              style={{
+                background: i % 2 === 0 ? "#fff" : "#ffd700",
+                boxShadow: `0 0 6px ${i % 2 === 0 ? "#fff" : "#ffd700"}`,
+                left: `${8 + i * 10}%`,
+                top: 6,
+                animationDelay: `${i * 0.15}s`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Окно барабанов */}
+        <div className="rounded-xl p-3 mb-3" style={{
+          background: "linear-gradient(135deg, #c8860a, #ffd700, #c8860a)",
+          boxShadow: "0 0 20px rgba(200,134,10,0.6)",
+          border: "3px solid #ffd700",
+        }}>
+          <div className="rounded-lg p-2 flex gap-2" style={{
+            background: "#0a001a",
+            boxShadow: "inset 0 0 30px rgba(0,0,0,0.9)",
+          }}>
+            {[0, 1, 2].map((ri) => (
+              <Reel
+                key={ri}
+                symbols={REEL_SYMBOLS}
+                spinning={spinning}
+                finalIndex={reelResults[ri] ?? 0}
+                delay={ri * 300}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Панель JACKPOT */}
+        <div className="flex items-center justify-center py-2 px-4 rounded-lg mb-4" style={{
+          background: "#111",
+          border: "2px solid #ffd700",
+          boxShadow: isWin
+            ? "0 0 20px rgba(255,215,0,0.8), inset 0 0 10px rgba(255,215,0,0.2)"
+            : "0 0 10px rgba(0,0,0,0.5)",
+        }}>
+          <span className="font-black tracking-widest" style={{
+            fontSize: 22,
+            color: isWin ? "#ffd700" : "#555",
+            textShadow: isWin ? "0 0 15px rgba(255,215,0,1)" : "none",
+            fontFamily: "serif",
+            transition: "all 0.3s",
+          }}>
+            {isWin ? "🎉 JACKPOT! 🎉" : "JACKPOT"}
+          </span>
+        </div>
+
+        {/* Кнопки внизу */}
+        <div className="flex gap-4 justify-center">
+          {[
+            { color: "#3b82f6", shadow: "#3b82f6" },
+            { color: "#888", shadow: "#888" },
+            { color: "#ef4444", shadow: "#ef4444" },
+          ].map((btn, i) => (
+            <div key={i} className="w-10 h-10 rounded-full border-4 border-black"
+              style={{ background: btn.color, boxShadow: `0 4px 0 rgba(0,0,0,0.5), 0 0 10px ${btn.shadow}44` }}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Стержень */}
-      <div
-        className="rounded-full"
-        style={{
-          width: 8,
-          height: pulled ? 40 : 120,
-          marginTop: pulled ? -40 : 0,
-          background: "linear-gradient(180deg, #aaa 0%, #777 50%, #aaa 100%)",
-          boxShadow: "2px 0 4px rgba(0,0,0,0.4)",
-          transition: "height 0.3s, margin-top 0.3s",
-        }}
-      />
-
-      {/* Основание */}
-      <div
-        className="rounded-lg"
-        style={{
-          width: 24,
-          height: 40,
-          background: "linear-gradient(180deg, #555 0%, #333 100%)",
-          boxShadow: "0 4px 8px rgba(0,0,0,0.5)",
-        }}
-      />
-
-      {/* Подпись */}
-      <div className="text-[#8e9297] text-xs mt-2 text-center">
-        {disabled ? "⏳" : "Дёрни!"}
+      {/* Рычаг сбоку */}
+      <div className="absolute" style={{ right: -60, top: 80 }}>
+        <Lever onPull={onSpin} disabled={spinning} />
       </div>
     </div>
   );
 }
 
-const SPRITE_URL = "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/3b4e2cfb-fc7a-4f78-9a58-95020566dfb2.png";
-
-// Координаты спрайта (col, row) — 3×3 сетка
-// 0=яблоко, 1=лайм, 2=сердце, 3=вишня, 4=BAR, 5=колокол, 6=семёрка, 7=виноград, 8=арбуз
-const SLOT_ICONS = [
-  { col: 0, row: 0, label: "Яблоко",   color: "#ff2d55" }, // яблоко
-  { col: 2, row: 0, label: "Сердце",   color: "#ff3b6b" }, // сердце
-  { col: 0, row: 1, label: "Вишня",    color: "#cc2222" }, // вишня
-  { col: 2, row: 1, label: "Колокол",  color: "#ffd700" }, // колокол
-  { col: 0, row: 2, label: "Семёрка",  color: "#ff8c00" }, // 7
-  { col: 1, row: 2, label: "Виноград", color: "#9b59b6" }, // виноград
-  { col: 2, row: 2, label: "Арбуз",    color: "#2ecc71" }, // арбуз
-  { col: 1, row: 0, label: "Лайм",     color: "#88cc00" }, // лайм
-];
-
-// Цвета секторов колеса (яркие, праздничные) — все в голубом неоновом стиле
-const NEON_SECTORS = SLOT_ICONS.map(s => ({ ...s, emoji: "" }));
-
-const WIN_SOUND = "https://cdn.discordapp.com/attachments/1407625036667293818/1515959445455114270/GameboyJones_-_HIT_THE_JACKPOT_Hakari_Dance_80967376_cut_17sec.mp3?ex=6a30e6c0&is=6a2f9540&hm=db43b7fda22bf85f0f1e7c8674573263f7b144500dd4cc7705a2680822af3184&";
-
-function playWinSound() {
-  const audio = new Audio(WIN_SOUND);
-  audio.volume = 0.8;
-  audio.play().catch(() => null);
-}
-
-// ── Колесо ────────────────────────────────────────────────────────────────────
-function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
-  const R = 150;
-  const sectors = NEON_SECTORS;
-  const count = sectors.length;
-  const sectorAngle = 360 / count;
+// ── Лог ──────────────────────────────────────────────────────────────────────
+function GameLog({ messages }: { messages: string[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [messages]);
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 340, height: 340 }}>
-
-      {/* Неоновое свечение вокруг */}
-      <div className="absolute inset-0 rounded-full pointer-events-none" style={{
-        boxShadow: spinning
-          ? "0 0 60px #eb459e, 0 0 120px rgba(235,69,158,0.5), 0 0 180px rgba(88,101,242,0.3)"
-          : "0 0 40px #a855f7, 0 0 80px rgba(168,85,247,0.4), 0 0 120px rgba(88,101,242,0.2)",
-        borderRadius: "50%",
-        transition: "box-shadow 0.5s",
-      }} />
-
-      {/* Внешнее декоративное кольцо с шариками */}
-      <svg className="absolute" width="340" height="340" viewBox="0 0 340 340">
-        <defs>
-          <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#faa61a" />
-            <stop offset="33%" stopColor="#eb459e" />
-            <stop offset="66%" stopColor="#5865f2" />
-            <stop offset="100%" stopColor="#faa61a" />
-          </linearGradient>
-          {sectors.map((s, i) => (
-            <radialGradient key={i} id={`grad${i}`} cx="40%" cy="40%" r="60%">
-              <stop offset="0%" stopColor={s.color} stopOpacity="1" />
-              <stop offset="100%" stopColor={s.color} stopOpacity="0.6" />
-            </radialGradient>
-          ))}
-        </defs>
-        {/* Кольцо */}
-        <circle cx="170" cy="170" r="165" fill="none" stroke="url(#ringGrad)" strokeWidth="6" opacity="0.9" />
-        <circle cx="170" cy="170" r="158" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-        {/* Декоративные шарики по кольцу */}
-        {Array.from({ length: 16 }).map((_, i) => {
-          const a = (i * 22.5 - 90) * (Math.PI / 180);
-          const x = 170 + 165 * Math.cos(a);
-          const y = 170 + 165 * Math.sin(a);
-          const colors = ["#faa61a","#eb459e","#5865f2","#3ba55c"];
-          return <circle key={i} cx={x} cy={y} r="5" fill={colors[i % 4]} opacity="0.9" style={{ filter: `drop-shadow(0 0 4px ${colors[i % 4]})` }} />;
-        })}
-      </svg>
-
-      {/* Сам барабан */}
-      <div
-        className="absolute rounded-full overflow-hidden"
-        style={{
-          width: 300,
-          height: 300,
-          transform: `rotate(${angle}deg)`,
-          transition: spinning ? "transform 3.5s cubic-bezier(0.15, 0.6, 0.1, 1.0)" : "none",
-          boxShadow: "inset 0 0 30px rgba(0,0,0,0.6)",
-        }}
-      >
-        <svg width="300" height="300" viewBox="0 0 300 300">
-          <defs>
-            {sectors.map((s, i) => (
-              <radialGradient key={i} id={`sg${i}`} cx="50%" cy="100%" r="80%">
-                <stop offset="0%" stopColor="#fff" stopOpacity="0.12" />
-                <stop offset="100%" stopColor={s.color} stopOpacity="0" />
-              </radialGradient>
-            ))}
-            {sectors.map((_s, i) => (
-              <clipPath key={i} id={`clip${i}`}>
-                <circle cx="0" cy="0" r="28" />
-              </clipPath>
-            ))}
-          </defs>
-
-          {sectors.map((sector, i) => {
-            const startA = (i * sectorAngle - 90) * (Math.PI / 180);
-            const endA = ((i + 1) * sectorAngle - 90) * (Math.PI / 180);
-            const x1 = 150 + R * Math.cos(startA);
-            const y1 = 150 + R * Math.sin(startA);
-            const x2 = 150 + R * Math.cos(endA);
-            const y2 = 150 + R * Math.sin(endA);
-            const midA = ((i + 0.5) * sectorAngle - 90) * (Math.PI / 180);
-            const tx = 150 + 90 * Math.cos(midA);
-            const ty = 150 + 90 * Math.sin(midA);
-            return (
-              <g key={i}>
-                {/* Основной сектор */}
-                <path d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`} fill={sector.color} opacity="0.85" />
-                {/* Блик */}
-                <path d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`} fill={`url(#sg${i})`} />
-                {/* Разделитель */}
-                <line x1="150" y1="150" x2={x1} y2={y1} stroke="rgba(0,0,0,0.5)" strokeWidth="2.5" />
-                {/* Иконка из спрайта */}
-                <circle cx={tx} cy={ty} r="22" fill="rgba(255,255,255,0.95)" />
-                <foreignObject x={tx - 21} y={ty - 21} width="42" height="42" style={{ overflow: "hidden", borderRadius: "50%" }}>
-                  <div
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      backgroundImage: `url(${SPRITE_URL})`,
-                      backgroundSize: "300% 300%",
-                      backgroundPosition: `${sector.col * 50}% ${sector.row * 50}%`,
-                    }}
-                  />
-                </foreignObject>
-              </g>
-            );
-          })}
-
-          {/* Центральный диск */}
-          <circle cx="150" cy="150" r="32" fill="#0d001a" stroke="#00e5ff" strokeWidth="3" style={{ filter: "drop-shadow(0 0 6px #00e5ff)" }} />
-          <text x="150" y="150" textAnchor="middle" dominantBaseline="central" fontSize="22">🎰</text>
-        </svg>
-      </div>
-
-      {/* Стрелка-указатель неоновая */}
-      <div className="absolute z-10" style={{ top: 2, left: "50%", transform: "translateX(-50%)" }}>
-        <svg width="28" height="36" viewBox="0 0 28 36">
-          <defs>
-            <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#fff" />
-              <stop offset="100%" stopColor="#faa61a" />
-            </linearGradient>
-          </defs>
-          <polygon points="14,0 28,36 0,36" fill="url(#arrowGrad)" style={{ filter: "drop-shadow(0 0 8px #faa61a) drop-shadow(0 0 16px rgba(250,166,26,0.8))" }} />
-        </svg>
-      </div>
-
-      {/* Пульсирующие точки по бокам (декор) */}
-      {spinning && [0,90,180,270].map((deg, i) => {
-        const rad = (deg - 90) * Math.PI / 180;
-        const x = 170 + 145 * Math.cos(rad);
-        const y = 170 + 145 * Math.sin(rad);
-        return (
-          <div key={i} className="absolute w-3 h-3 rounded-full animate-ping" style={{
-            left: x - 6, top: y - 6,
-            background: ["#faa61a","#eb459e","#5865f2","#3ba55c"][i],
-          }} />
-        );
-      })}
+    <div ref={ref} className="rounded-xl p-3 space-y-1 overflow-y-auto" style={{
+      maxHeight: 130,
+      background: "rgba(10,0,30,0.8)",
+      border: "1px solid rgba(235,69,158,0.4)",
+      boxShadow: "0 0 16px rgba(235,69,158,0.15)",
+    }}>
+      {messages.length === 0 && <p className="text-xs" style={{ color: "rgba(0,200,255,0.5)" }}>Дёрни рычаг — и начнём! 🎰</p>}
+      {messages.map((m, i) => (
+        <p key={i} className="text-xs leading-relaxed" style={{
+          color: m.includes("🎉") || m.includes("✅") ? "#4ade80"
+               : m.includes("➡️") ? "#f59e0b"
+               : "#c4b5fd",
+        }}>{m}</p>
+      ))}
     </div>
   );
 }
 
-// ── Прогресс-бар прокрутов ────────────────────────────────────────────────────
+// ── Прогресс окон ─────────────────────────────────────────────────────────────
 function SpinProgress({ player }: { player: PlayerState }) {
-  const total = TOTAL_SPINS;
-  const used = player.spinsUsed;
-  const pct = (used / total) * 100;
-
   return (
     <div className="w-full">
-      <div className="flex justify-between text-xs text-[#b9bbbe] mb-1">
-        <span>Прокруты: {used}/{total}</span>
+      <div className="flex justify-between text-xs mb-1" style={{ color: "rgba(196,181,253,0.7)" }}>
+        <span>Прокруты: {player.spinsUsed}/{TOTAL_SPINS}</span>
         <span>Окно {player.currentWindow + 1}/5</span>
       </div>
-      <div className="h-2 bg-[#202225] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${pct}%`,
-            background: "linear-gradient(90deg, #5865f2, #faa61a)",
-          }}
-        />
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+        <div className="h-full rounded-full transition-all duration-500" style={{
+          width: `${(player.spinsUsed / TOTAL_SPINS) * 100}%`,
+          background: "linear-gradient(90deg, #00e5ff, #a855f7)",
+        }} />
       </div>
-      {/* Окна */}
       <div className="flex gap-1 mt-2">
         {Array.from({ length: 5 }).map((_, wi) => {
-          const windowPrize = getPrizeForWindow(wi);
+          const pr = getPrizeForWindow(wi);
           const isPast = wi < player.currentWindow;
           const isCurrent = wi === player.currentWindow;
           return (
-            <div
-              key={wi}
-              className="flex-1 rounded text-center py-1 text-xs font-semibold border"
-              style={{
-                borderColor: isCurrent ? windowPrize.color : "#40444b",
-                background: isCurrent ? windowPrize.color + "22" : isPast ? "#1a1b1e" : "transparent",
-                color: isCurrent ? windowPrize.color : isPast ? "#4f545c" : "#8e9297",
-              }}
-            >
-              {windowPrize.emoji}
-              <div style={{ fontSize: 9 }}>
-                {Math.round(windowPrize.winChance * 100)}%
-              </div>
+            <div key={wi} className="flex-1 rounded text-center py-1 text-xs font-semibold border" style={{
+              borderColor: isCurrent ? pr.color : "rgba(255,255,255,0.1)",
+              background: isCurrent ? pr.color + "22" : isPast ? "rgba(0,0,0,0.3)" : "transparent",
+              color: isCurrent ? pr.color : isPast ? "#444" : "rgba(255,255,255,0.4)",
+              boxShadow: isCurrent ? `0 0 8px ${pr.color}44` : "none",
+            }}>
+              {pr.emoji}
+              <div style={{ fontSize: 9 }}>{Math.round(pr.winChance * 100)}%</div>
             </div>
           );
         })}
@@ -380,729 +383,400 @@ function SpinProgress({ player }: { player: PlayerState }) {
   );
 }
 
-// ── Лог сообщений ─────────────────────────────────────────────────────────────
-function GameLog({ messages }: { messages: string[] }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [messages]);
-
-  return (
-    <div
-      ref={ref}
-      className="rounded-xl p-3 space-y-1 overflow-y-auto"
-      style={{
-        maxHeight: 140,
-        background: "rgba(10,0,30,0.8)",
-        border: "1px solid rgba(235,69,158,0.4)",
-        boxShadow: "0 0 16px rgba(235,69,158,0.15), inset 0 0 20px rgba(168,85,247,0.05)",
-      }}
-    >
-      {messages.length === 0 && (
-        <p className="text-purple-400/60 text-xs">Дёрни за рычаг — и начнём! 🎰</p>
-      )}
-      {messages.map((m, i) => (
-        <p key={i} className="text-xs leading-relaxed" style={{ color: m.includes("🎉") || m.includes("✅") ? "#4ade80" : m.includes("🎲") || m.includes("➡️") ? "#f59e0b" : "#c4b5fd" }}>{m}</p>
-      ))}
-    </div>
-  );
-}
-
 // ── Главный компонент ─────────────────────────────────────────────────────────
 export default function Index() {
-  const [playerCount, setPlayerCount] = useState<number | null>(null);
-  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
-  const [players, setPlayers] = useState<PlayerState[]>([]);
-  const [wheelAngle, setWheelAngle] = useState(0);
+  const [started, setStarted] = useState(false);
+  const [player, setPlayer] = useState<PlayerState>(makePlayer());
   const [spinning, setSpinning] = useState(false);
+  const [reelResults, setReelResults] = useState([0, 0, 0]);
   const [showResult, setShowResult] = useState(false);
-  const [resultText, setResultText] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const totalAngleRef = useRef(0);
+  const [winPrize, setWinPrize] = useState<Prize | null>(null);
 
-  const player = players[currentPlayerIndex] ?? null;
-
-  function startGame(count: number) {
-    setPlayerCount(count);
-    setPlayers(Array.from({ length: count }, (_, i) => makePlayer(i + 1)));
-    setCurrentPlayerIndex(0);
-    setWheelAngle(0);
-    totalAngleRef.current = 0;
-  }
-
-  function updatePlayer(update: Partial<PlayerState> | ((p: PlayerState) => PlayerState)) {
-    setPlayers((prev) =>
-      prev.map((p, i) =>
-        i === currentPlayerIndex
-          ? typeof update === "function"
-            ? update(p)
-            : { ...p, ...update }
-          : p
-      )
-    );
-  }
-
-  function addLog(msg: string) {
-    updatePlayer((p) => ({ ...p, log: [...p.log, msg] }));
+  function updatePlayer(fn: (p: PlayerState) => PlayerState) {
+    setPlayer(prev => fn(prev));
   }
 
   function spin() {
-    if (!player || spinning) return;
-    if (player.phase === "won") return; // нужно принять решение
+    if (spinning || player.phase === "won") return;
 
-    // Вращаем колесо
-    const extraSpins = 5 + Math.floor(Math.random() * 5); // 5-9 оборотов
-    const extraAngle = Math.floor(Math.random() * 360);
-    const delta = extraSpins * 360 + extraAngle;
-    totalAngleRef.current += delta;
-    setWheelAngle(totalAngleRef.current);
     setSpinning(true);
+    setShowResult(false);
+    setWinPrize(null);
 
-    // После анимации
+    // Случайные индексы для барабанов
+    const r1 = Math.floor(Math.random() * REEL_SYMBOLS.length);
+    const prize = getPrizeForWindow(player.currentWindow);
+    const roll = Math.random();
+    const won = roll < prize.winChance;
+
+    // Если победа — делаем два барабана одинаковыми (визуально "совпадение")
+    let r2: number, r3: number;
+    if (won) {
+      r2 = r1;
+      r3 = r1;
+    } else {
+      r2 = (r1 + 1 + Math.floor(Math.random() * (REEL_SYMBOLS.length - 1))) % REEL_SYMBOLS.length;
+      r3 = (r1 + 2 + Math.floor(Math.random() * (REEL_SYMBOLS.length - 2))) % REEL_SYMBOLS.length;
+    }
+
+    setReelResults([r1, r2, r3]);
+
     setTimeout(() => {
       setSpinning(false);
+      setShowResult(true);
 
-      setPlayers((prev) => {
-        const p = { ...prev[currentPlayerIndex] };
-        const newSpinsUsed = p.spinsUsed + 1;
-        const newSpinsInWindow = p.spinsInWindow + 1;
-        const currentWindow = p.currentWindow;
-        const prize = getPrizeForWindow(currentWindow);
-        const log = [...p.log];
+      setPlayer(prev => {
+        const newSpinsUsed = prev.spinsUsed + 1;
+        const newSpinsInWindow = prev.spinsInWindow + 1;
+        const log = [...prev.log];
 
-        log.push(`Прокрут #${newSpinsUsed} (окно ${currentWindow + 1}, шанс ${Math.round(prize.winChance * 100)}%)`);
-
-        // Проверяем выигрыш
-        const roll = Math.random();
-        const won = roll < prize.winChance;
-
-        let newPhase: GamePhase = p.phase;
-        let pendingPrize = p.pendingPrize;
-        let wonPrizes = p.wonPrizes;
+        log.push(`Прокрут #${newSpinsUsed} (окно ${prev.currentWindow + 1}, шанс ${Math.round(prize.winChance * 100)}%) — ${won ? "🎉 ВЫИГРЫШ!" : "не выпало"}`);
 
         if (won) {
-          // Выиграли приз в этом окне!
-          log.push(`🎉 Выпало: ${prize.emoji} ${prize.label}!`);
-          pendingPrize = prize;
-          wonPrizes = [...p.wonPrizes, prize];
-          newPhase = "won";
           playWinSound();
-        } else {
-          log.push(`Не выпало. Продолжаем…`);
-
-          // Проверяем: завершили окно (5 прокрутов)?
-          if (newSpinsInWindow >= WINDOW_SIZE) {
-            // Переходим к следующему окну
-            const nextWindow = currentWindow + 1;
-            if (newSpinsUsed >= TOTAL_SPINS || nextWindow >= PRIZES.length) {
-              // Все 25 прокрутов — утешительный приз
-              log.push(`🎁 Все прокруты использованы! Получаешь утешительный приз.`);
-              newPhase = "consolation";
-            } else {
-              log.push(`➡️ Следующее окно! Теперь разыгрывается: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label}`);
-              // сбросим spinsInWindow в след. итерации
-              const updatedPlayer: PlayerState = {
-                ...p,
-                spinsUsed: newSpinsUsed,
-                spinsInWindow: 0,
-                currentWindow: nextWindow,
-                pendingPrize,
-                wonPrizes,
-                phase: newPhase,
-                log,
-              };
-              return prev.map((pl, i) => (i === currentPlayerIndex ? updatedPlayer : pl));
-            }
-          }
+          setWinPrize(prize);
+          return { ...prev, spinsUsed: newSpinsUsed, spinsInWindow: newSpinsInWindow, pendingPrize: prize, wonPrizes: [...prev.wonPrizes, prize], phase: "won", log };
         }
 
-        const updatedPlayer: PlayerState = {
-          ...p,
-          spinsUsed: newSpinsUsed,
-          spinsInWindow: won ? p.spinsInWindow : newSpinsInWindow,
-          currentWindow: p.currentWindow,
-          pendingPrize,
-          wonPrizes,
-          phase: newPhase,
-          log,
-        };
-        return prev.map((pl, i) => (i === currentPlayerIndex ? updatedPlayer : pl));
+        if (newSpinsInWindow >= WINDOW_SIZE) {
+          const nextWindow = prev.currentWindow + 1;
+          if (newSpinsUsed >= TOTAL_SPINS || nextWindow >= PRIZES.length) {
+            log.push(`🎁 Все прокруты использованы! Получаешь утешительный приз.`);
+            return { ...prev, spinsUsed: newSpinsUsed, spinsInWindow: 0, phase: "consolation", log };
+          }
+          log.push(`➡️ Следующее окно: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label}`);
+          return { ...prev, spinsUsed: newSpinsUsed, spinsInWindow: 0, currentWindow: nextWindow, log };
+        }
+
+        return { ...prev, spinsUsed: newSpinsUsed, spinsInWindow: newSpinsInWindow, log };
       });
-    }, 3200);
+    }, 2800);
   }
 
   function takePrize() {
-    if (!player || !player.pendingPrize) return;
-    addLog(`✅ Игрок взял ${player.pendingPrize.emoji} ${player.pendingPrize.label}!`);
-    updatePlayer({ phase: "took" });
+    updatePlayer(p => {
+      const log = [...p.log, `✅ Приз забран: ${p.pendingPrize?.emoji} ${p.pendingPrize?.label}!`];
+      return { ...p, phase: "took", log };
+    });
   }
 
   function continueSpin() {
-    if (!player) return;
-    // Отказался от приза — продолжает, но если проиграет — теряет ВСЁ
-    addLog(`🎲 Продолжаем! Выигранные призы аннулируются если проиграешь…`);
-    // Переходим к следующему окну после выигрыша
     const nextWindow = player.currentWindow + 1;
-    if (player.spinsUsed >= TOTAL_SPINS || nextWindow >= PRIZES.length) {
-      addLog(`🎁 Больше прокрутов нет — утешительный приз!`);
-      updatePlayer({ phase: "consolation", pendingPrize: null });
+    if (nextWindow >= PRIZES.length || player.spinsUsed >= TOTAL_SPINS) {
+      updatePlayer(p => ({ ...p, phase: "consolation", pendingPrize: null }));
     } else {
-      addLog(`➡️ Следующее окно: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label} (${Math.round(getPrizeForWindow(nextWindow).winChance * 100)}%)`);
-      updatePlayer({
-        phase: "idle",
-        pendingPrize: null,
-        currentWindow: nextWindow,
-        spinsInWindow: 0,
-      });
+      updatePlayer(p => ({
+        ...p, phase: "idle", pendingPrize: null,
+        currentWindow: nextWindow, spinsInWindow: 0,
+        log: [...p.log, `🎲 Рискуем! Следующий приз: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label}`],
+      }));
     }
-  }
-
-  function nextPlayer() {
-    const next = currentPlayerIndex + 1;
-    if (next < (playerCount ?? 0)) {
-      setCurrentPlayerIndex(next);
-      setWheelAngle(0);
-      totalAngleRef.current = 0;
-    }
-  }
-
-  function resetGame() {
-    setPlayerCount(null);
-    setPlayers([]);
-    setCurrentPlayerIndex(0);
-    setWheelAngle(0);
-    totalAngleRef.current = 0;
     setShowResult(false);
+    setWinPrize(null);
   }
 
-  const isGameOver =
-    player &&
-    (player.phase === "took" ||
-      player.phase === "consolation" ||
-      player.phase === "done");
+  function reset() {
+    setStarted(false);
+    setPlayer(makePlayer());
+    setSpinning(false);
+    setReelResults([0, 0, 0]);
+    setShowResult(false);
+    setWinPrize(null);
+  }
 
-  const allDone =
-    playerCount !== null &&
-    players.length === playerCount &&
-    players.every(
-      (p) =>
-        p.phase === "took" || p.phase === "consolation" || p.phase === "done"
-    );
-
-  // ── Экран выбора игроков ──────────────────────────────────────────────────
-  if (playerCount === null) {
+  // ── Стартовый экран ────────────────────────────────────────────────────────
+  if (!started) {
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
-        style={{
-          background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)",
-        }}
-      >
-        {/* Конфетти-звёзды */}
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+        style={{ background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)" }}>
         {["🎉","✨","🎊","🍭","🎁","⭐","🎈","💫","🎀","🌟"].map((em, i) => (
-          <div
-            key={i}
-            className="absolute text-3xl pointer-events-none animate-bounce"
-            style={{
-              left: `${5 + i * 9}%`,
-              top: `${10 + (i % 3) * 25}%`,
-              animationDelay: `${i * 0.3}s`,
-              animationDuration: `${1.5 + (i % 3) * 0.5}s`,
-              opacity: 0.7,
-            }}
-          >
-            {em}
-          </div>
+          <div key={i} className="absolute text-3xl pointer-events-none animate-bounce" style={{
+            left: `${5 + i * 9}%`, top: `${10 + (i % 3) * 25}%`,
+            animationDelay: `${i * 0.3}s`, animationDuration: `${1.5 + (i % 3) * 0.5}s`, opacity: 0.7,
+          }}>{em}</div>
         ))}
-
-        {/* Цветные круги-блики */}
         <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(235,69,158,0.25) 0%, transparent 70%)" }} />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(88,101,242,0.25) 0%, transparent 70%)" }} />
-        <div className="absolute top-1/2 left-0 w-64 h-64 rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(250,166,26,0.2) 0%, transparent 70%)" }} />
 
-        {/* Контент */}
         <div className="relative z-10 text-center">
-          <div className="text-8xl mb-6" style={{ filter: "drop-shadow(0 0 30px rgba(250,166,26,0.8))" }}>
-            🎂
-          </div>
-          <h1
-            className="text-5xl sm:text-6xl font-bold mb-3"
-            style={{
-              background: "linear-gradient(135deg, #faa61a, #eb459e, #5865f2)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              filter: "drop-shadow(0 0 20px rgba(235,69,158,0.5))",
-            }}
-          >
-            Барабан Удачи
-          </h1>
-          <p className="text-pink-200 text-xl mb-12 font-medium">
-            С днём рождения, мамочка! 🎉
-          </p>
-
-          <button
-            onClick={() => startGame(1)}
+          <div className="text-8xl mb-6" style={{ filter: "drop-shadow(0 0 30px rgba(250,166,26,0.8))" }}>🎂</div>
+          <h1 className="text-5xl sm:text-6xl font-bold mb-3" style={{
+            background: "linear-gradient(135deg, #faa61a, #eb459e, #5865f2)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          }}>Барабан Удачи</h1>
+          <p className="text-pink-200 text-xl mb-12 font-medium">С днём рождения, мамочка! 🎉</p>
+          <button onClick={() => setStarted(true)}
             className="px-16 py-5 rounded-2xl font-bold text-2xl text-white transition-all hover:scale-105 active:scale-95"
             style={{
               background: "linear-gradient(135deg, #eb459e, #faa61a)",
               boxShadow: "0 0 40px rgba(235,69,158,0.6), 0 8px 32px rgba(0,0,0,0.4)",
-            }}
-          >
+            }}>
             🎰 Играть!
           </button>
-
-          <p className="text-purple-300 text-sm mt-6 opacity-70">
-            5 призов · 25 прокрутов · 1 победитель
-          </p>
+          <p className="text-purple-300 text-sm mt-6 opacity-70">5 призов · 25 прокрутов</p>
         </div>
       </div>
     );
   }
 
-  // ── Экран итогов ──────────────────────────────────────────────────────────
-  if (allDone) {
+  // ── Финальный экран ───────────────────────────────────────────────────────
+  if (player.phase === "took" || player.phase === "consolation") {
+    const finalPrize = player.phase === "consolation" ? CONSOLATION : player.wonPrizes[player.wonPrizes.length - 1];
+    const img = player.phase !== "consolation" && player.wonPrizes.length > 0
+      ? PRIZE_IMAGES[player.wonPrizes[player.wonPrizes.length - 1].id]
+      : null;
     return (
-      <div className="min-h-screen bg-[#36393f] flex flex-col items-center justify-center p-6">
-        <div className="text-center mb-8">
-          <div className="text-6xl mb-4">🏆</div>
-          <h1 className="text-3xl font-bold text-white mb-2">Игра завершена!</h1>
-          <p className="text-[#b9bbbe]">Итоги праздничного барабана</p>
-        </div>
-
-        <div className="bg-[#2f3136] border border-[#202225] rounded-xl p-6 w-full max-w-lg mb-6">
-          {players.map((p, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3 rounded-lg mb-2 last:mb-0"
-              style={{ background: "#36393f" }}
-            >
-              <div className="w-10 h-10 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white">
-                {i + 1}
-              </div>
-              <div className="flex-1">
-                <div className="text-white font-medium">Игрок {i + 1}</div>
-                <div className="text-[#b9bbbe] text-sm">
-                  {p.phase === "consolation"
-                    ? `${CONSOLATION.emoji} ${CONSOLATION.label}`
-                    : p.phase === "took" && p.pendingPrize
-                    ? `${p.pendingPrize.emoji} ${p.pendingPrize.label}`
-                    : p.phase === "took" && p.wonPrizes.length > 0
-                    ? `${p.wonPrizes[p.wonPrizes.length - 1].emoji} ${p.wonPrizes[p.wonPrizes.length - 1].label}`
-                    : "Ничего не выиграл"}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button
-          onClick={resetGame}
-          className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-8 py-3 rounded-xl font-semibold text-lg transition-colors"
-        >
-          🔄 Играть снова
-        </button>
-      </div>
-    );
-  }
-
-  // ── Основной экран игры ───────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen text-white overflow-x-hidden"
-      style={{ background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)" }}
-    >
-      {/* Навбар */}
-      <nav className="border-b border-purple-900/50 px-4 py-3" style={{ background: "rgba(26,5,51,0.9)", backdropFilter: "blur(10px)" }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#faa61a] rounded-full flex items-center justify-center text-xl">
-              🎂
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">Барабан Удачи</h1>
-              <p className="text-xs text-[#b9bbbe]">С днём рождения! 🎉</p>
-            </div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6"
+        style={{ background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)" }}>
+        <div className="text-center">
+          <div className="text-6xl mb-4">{player.phase === "consolation" ? "🎁" : "🏆"}</div>
+          <h1 className="text-3xl font-bold text-white mb-2">{player.phase === "consolation" ? "Утешительный приз!" : "Поздравляем!"}</h1>
+          {img && <img src={img} alt={finalPrize.label} className="w-40 h-40 object-cover rounded-2xl mx-auto my-4 border-2" style={{ borderColor: "rgba(0,220,255,0.6)", boxShadow: "0 0 20px rgba(0,200,255,0.4)" }} />}
+          <div className="text-2xl font-bold mb-6" style={{ color: "#00e5ff", textShadow: "0 0 10px rgba(0,200,255,0.8)" }}>
+            {finalPrize.emoji} {finalPrize.label}
           </div>
-
-          {/* Переключатель игроков */}
-          <div className="hidden sm:flex items-center gap-2">
-            {players.map((p, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  if (!spinning) {
-                    setCurrentPlayerIndex(i);
-                    setWheelAngle(0);
-                    totalAngleRef.current = 0;
-                  }
-                }}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all"
-                style={{
-                  borderColor:
-                    i === currentPlayerIndex ? "#faa61a" : "#40444b",
-                  background:
-                    p.phase === "took" || p.phase === "consolation"
-                      ? "#3ba55c"
-                      : i === currentPlayerIndex
-                      ? "#faa61a22"
-                      : "#36393f",
-                  color:
-                    i === currentPlayerIndex ? "#faa61a" : "#8e9297",
-                }}
-              >
-                {p.phase === "took" || p.phase === "consolation" ? "✓" : i + 1}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={resetGame}
-            className="text-[#8e9297] hover:text-white text-xs px-3 py-1.5 rounded border border-[#40444b] hover:border-[#8e9297] transition-all"
-          >
-            Заново
+          <button onClick={reset}
+            className="px-8 py-3 rounded-xl font-bold text-lg text-white"
+            style={{ background: "linear-gradient(135deg, #eb459e, #faa61a)", boxShadow: "0 0 20px rgba(235,69,158,0.5)" }}>
+            🔄 Играть снова
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // ── Основной экран ────────────────────────────────────────────────────────
+  const currentPrize = getPrizeForWindow(player.currentWindow);
+
+  return (
+    <div className="min-h-screen text-white overflow-x-hidden"
+      style={{ background: "radial-gradient(ellipse at top, #1a0533 0%, #0d001a 60%, #000 100%)" }}>
+
+      {/* Навбар */}
+      <nav className="border-b px-4 py-3 flex items-center justify-between"
+        style={{ background: "rgba(26,5,51,0.9)", borderColor: "rgba(139,92,246,0.3)", backdropFilter: "blur(10px)" }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-xl"
+            style={{ background: "linear-gradient(135deg, #faa61a, #eb459e)" }}>🎂</div>
+          <div>
+            <h1 className="text-lg font-bold text-white">Барабан Удачи</h1>
+            <p className="text-xs" style={{ color: "rgba(196,181,253,0.7)" }}>С днём рождения! 🎉</p>
+          </div>
+        </div>
+        <button onClick={reset} className="text-xs px-3 py-1.5 rounded border transition-all"
+          style={{ color: "rgba(196,181,253,0.6)", borderColor: "rgba(139,92,246,0.3)" }}>
+          Заново
+        </button>
       </nav>
 
-      {/* Макет Discord */}
       <div className="flex min-h-[calc(100vh-57px)]">
+
         {/* Боковая панель */}
         <div className="hidden lg:flex w-60 flex-col" style={{ background: "rgba(20,3,40,0.8)", borderRight: "1px solid rgba(139,92,246,0.2)" }}>
-          {/* Заголовок панели */}
           <div className="p-4 relative overflow-hidden" style={{ borderBottom: "1px solid rgba(139,92,246,0.3)" }}>
-            <div className="absolute inset-0 pointer-events-none" style={{
-              background: "linear-gradient(135deg, rgba(235,69,158,0.15) 0%, rgba(88,101,242,0.1) 100%)",
-            }} />
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(235,69,158,0.15), rgba(88,101,242,0.1))" }} />
             <div className="relative">
               <h2 className="font-bold text-base" style={{
                 background: "linear-gradient(135deg, #faa61a, #eb459e)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
               }}>🎪 Праздник</h2>
-              <p className="text-purple-400/60 text-xs mt-0.5">День рождения мамочки 🎂</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(168,85,247,0.6)" }}>День рождения мамочки 🎂</p>
             </div>
           </div>
 
           <div className="flex-1 p-2">
-            {/* Призы-«каналы» */}
             <div className="mb-2 px-2 py-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(168,85,247,0.7)" }}>
               ✨ Призы
             </div>
             {PRIZES.map((pr, i) => {
-              const inWindow = i === (player?.currentWindow ?? 0);
+              const inWindow = i === player.currentWindow;
               return (
-                <div
-                  key={pr.id}
-                  className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm mb-1 transition-all"
-                  style={{
-                    background: inWindow ? `${pr.color}25` : "rgba(255,255,255,0.03)",
-                    color: inWindow ? pr.color : "#ffffff",
-                    border: inWindow ? `1px solid ${pr.color}88` : "1px solid rgba(255,255,255,0.08)",
-                    boxShadow: inWindow ? `0 0 14px ${pr.color}44, 0 0 4px ${pr.color}22` : "none",
-                    textShadow: inWindow ? `0 0 8px ${pr.color}` : "0 0 6px rgba(255,255,255,0.3)",
-                  }}
-                >
+                <div key={pr.id} className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm mb-1 transition-all" style={{
+                  background: inWindow ? `${pr.color}25` : "rgba(255,255,255,0.03)",
+                  color: inWindow ? pr.color : "#fff",
+                  border: inWindow ? `1px solid ${pr.color}88` : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: inWindow ? `0 0 14px ${pr.color}44` : "none",
+                  textShadow: inWindow ? `0 0 8px ${pr.color}` : "0 0 6px rgba(255,255,255,0.2)",
+                }}>
                   <span className="text-base">{pr.emoji}</span>
                   <span className="flex-1 truncate text-xs font-medium">{pr.label}</span>
-                  <span className="text-xs font-bold" style={{ color: inWindow ? pr.color : "rgba(255,255,255,0.5)" }}>{Math.round(pr.winChance * 100)}%</span>
+                  <span className="text-xs font-bold" style={{ color: inWindow ? pr.color : "rgba(255,255,255,0.4)" }}>
+                    {Math.round(pr.winChance * 100)}%
+                  </span>
                 </div>
               );
             })}
-
-            <div className="mt-3 mb-2 px-2 py-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(168,85,247,0.7)" }}>
+            <div className="mt-3 mb-1 px-2 py-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(168,85,247,0.7)" }}>
               🎁 Гарантия
             </div>
-            <div className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm" style={{ color: "rgba(168,85,247,0.5)" }}>
-              <span>{CONSOLATION.emoji}</span>
-              <span className="text-xs">Утешительный приз</span>
+            <div className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>
+              <span>{CONSOLATION.emoji}</span><span className="text-xs">Утешительный приз</span>
             </div>
           </div>
 
-          {/* Пользователь */}
           <div className="p-2 flex items-center gap-2" style={{ background: "rgba(10,0,25,0.9)", borderTop: "1px solid rgba(139,92,246,0.2)" }}>
-            <div className="w-8 h-8 bg-[#faa61a] rounded-full flex items-center justify-center font-bold text-sm text-[#2f3136]">
-              {currentPlayerIndex + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white text-sm font-medium">Игрок {currentPlayerIndex + 1}</div>
-              <div className="text-[#3ba55c] text-xs">● В игре</div>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+              style={{ background: "linear-gradient(135deg, #faa61a, #eb459e)", color: "#1a0533" }}>🎂</div>
+            <div>
+              <div className="text-white text-sm font-medium">Игрок</div>
+              <div className="text-xs" style={{ color: "#3ba55c" }}>● В игре</div>
             </div>
           </div>
         </div>
 
         {/* Центр */}
         <div className="flex-1 flex flex-col">
-          {/* Заголовок канала */}
-          <div className="h-12 flex items-center px-4 gap-2" style={{ background: "rgba(20,3,40,0.6)", borderBottom: "1px solid rgba(139,92,246,0.2)" }}>
+          <div className="h-12 flex items-center px-4 gap-2"
+            style={{ background: "rgba(20,3,40,0.6)", borderBottom: "1px solid rgba(139,92,246,0.2)" }}>
             <span className="text-xl">🎰</span>
-            <span className="text-white font-semibold">барабан</span>
-            <div className="w-px h-5 bg-[#40444b] mx-2" />
-            <span className="text-[#8e9297] text-sm hidden sm:block">
-              Игрок {currentPlayerIndex + 1} · Прокрут {(player?.spinsUsed ?? 0) + 1}/{TOTAL_SPINS}
+            <span className="text-white font-semibold">слоты</span>
+            <div className="w-px h-5 mx-2" style={{ background: "rgba(139,92,246,0.4)" }} />
+            <span className="text-sm hidden sm:block" style={{ color: "rgba(168,85,247,0.7)" }}>
+              Прокрут {player.spinsUsed + 1}/{TOTAL_SPINS} · Разыгрывается: {currentPrize.emoji} {currentPrize.label}
             </span>
           </div>
 
-          {/* Контент */}
-          <div className="flex-1 p-4 sm:p-6 flex flex-col items-center gap-6 overflow-y-auto">
+          <div className="flex-1 p-4 sm:p-6 flex flex-col items-center gap-5 overflow-y-auto">
 
-            {/* Карточка текущего приза */}
-            {player && (() => {
-              const currentPrize = getPrizeForWindow(player.currentWindow);
-              const img = PRIZE_IMAGES[currentPrize.id];
-              return (
-                <div
-                  className="w-full max-w-sm rounded-xl p-4 text-center border overflow-hidden"
-                  style={{
-                    borderColor: currentPrize.color + "66",
-                    background: currentPrize.color + "11",
-                  }}
-                >
-                  {img ? (
-                    <img
-                      src={img}
-                      alt={currentPrize.label}
-                      className="w-32 h-32 object-cover rounded-xl mx-auto mb-3 border-2"
-                      style={{ borderColor: currentPrize.color + "88" }}
-                    />
-                  ) : (
-                    <div className="text-4xl mb-3">{currentPrize.emoji}</div>
-                  )}
-                  <div className="font-bold text-lg" style={{ color: currentPrize.color }}>
-                    {currentPrize.label}
-                  </div>
-                  <div className="text-[#b9bbbe] text-sm mt-1">
-                    Шанс выиграть: {Math.round(currentPrize.winChance * 100)}%
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Текущий приз */}
+            <div className="rounded-xl px-6 py-3 text-center border" style={{
+              borderColor: currentPrize.color + "66",
+              background: currentPrize.color + "11",
+              boxShadow: `0 0 20px ${currentPrize.color}22`,
+            }}>
+              <span className="text-2xl mr-2">{currentPrize.emoji}</span>
+              <span className="font-bold" style={{ color: currentPrize.color }}>{currentPrize.label}</span>
+              <span className="text-sm ml-3" style={{ color: "rgba(255,255,255,0.5)" }}>· шанс {Math.round(currentPrize.winChance * 100)}%</span>
+            </div>
 
-            {/* Колесо + Рычаг */}
-            <div className="flex items-center gap-4">
-              <Wheel angle={wheelAngle} spinning={spinning} />
-              {player && (player.phase === "idle" || player.phase === "spinning" || !player.phase) && (
-                <Lever
-                  onPull={spin}
-                  disabled={spinning || player.spinsUsed >= TOTAL_SPINS}
-                />
-              )}
+            {/* Слот-машина */}
+            <div className="my-2">
+              <SlotMachine
+                onSpin={spin}
+                spinning={spinning}
+                reelResults={reelResults}
+                showResult={showResult}
+                winPrize={winPrize}
+              />
             </div>
 
             {/* Прогресс */}
-            {player && (
-              <div className="w-full max-w-sm">
-                <SpinProgress player={player} />
-              </div>
-            )}
+            <div className="w-full max-w-sm">
+              <SpinProgress player={player} />
+            </div>
 
-            {/* Кнопки действий */}
-            {player && (
-              <div className="w-full max-w-sm space-y-3">
-                {/* Состояние: выиграли — берём или продолжаем */}
-                {player.phase === "won" && player.pendingPrize && (
-                  <div className="rounded-xl p-4 text-center" style={{
-                    background: "linear-gradient(135deg, rgba(0,50,80,0.9), rgba(0,20,60,0.95))",
-                    border: "1px solid rgba(0,220,255,0.6)",
-                    boxShadow: "0 0 30px rgba(0,200,255,0.3), 0 0 60px rgba(0,100,255,0.15), inset 0 0 30px rgba(0,200,255,0.05)",
-                  }}>
-                    {PRIZE_IMAGES[player.pendingPrize.id] ? (
-                      <img
-                        src={PRIZE_IMAGES[player.pendingPrize.id]}
-                        alt={player.pendingPrize.label}
-                        className="w-36 h-36 object-cover rounded-xl mx-auto mb-3"
-                        style={{ border: "2px solid rgba(0,220,255,0.8)", boxShadow: "0 0 16px rgba(0,200,255,0.5)" }}
-                      />
-                    ) : (
-                      <div className="text-3xl mb-2">{player.pendingPrize.emoji}</div>
-                    )}
-                    <div className="font-bold mb-1 text-lg" style={{ color: "#00e5ff", textShadow: "0 0 10px rgba(0,200,255,0.8)" }}>
-                      🎉 Выпало: {player.pendingPrize.label}!
-                    </div>
-                    <p className="text-xs mb-4" style={{ color: "rgba(0,200,255,0.6)" }}>
-                      Взять приз сейчас или рискнуть на следующее окно?
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={takePrize}
-                        className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(0,180,255,0.3), rgba(0,100,255,0.2))",
-                          border: "1px solid rgba(0,220,255,0.7)",
-                          color: "#00e5ff",
-                          boxShadow: "0 0 14px rgba(0,200,255,0.4)",
-                          textShadow: "0 0 6px rgba(0,200,255,0.6)",
-                        }}
-                      >
-                        ✅ Взять приз!
-                      </button>
-                      {player.currentWindow < PRIZES.length - 1 ? (
-                        <button
-                          onClick={continueSpin}
-                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
-                          style={{
-                            background: "linear-gradient(135deg, rgba(0,50,255,0.2), rgba(0,20,150,0.2))",
-                            border: "1px solid rgba(0,150,255,0.5)",
-                            color: "#60b4ff",
-                            boxShadow: "0 0 10px rgba(0,100,255,0.3)",
-                          }}
-                        >
-                          🎲 Рискнуть
-                        </button>
-                      ) : (
-                        <button
-                          onClick={takePrize}
-                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm cursor-not-allowed"
-                          style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)" }}
-                          disabled
-                        >
-                          Это макс.
-                        </button>
-                      )}
-                    </div>
+            {/* Кнопки */}
+            <div className="w-full max-w-sm space-y-3">
+
+              {/* Крутится */}
+              {spinning && (
+                <div className="w-full py-4 rounded-xl text-center font-bold text-lg" style={{
+                  background: "linear-gradient(135deg, rgba(0,200,255,0.15), rgba(0,100,255,0.1))",
+                  border: "1px solid rgba(0,220,255,0.5)",
+                  color: "#00e5ff",
+                  boxShadow: "0 0 20px rgba(0,200,255,0.3)",
+                  textShadow: "0 0 10px rgba(0,200,255,0.8)",
+                }}>
+                  🌀 Крутится…
+                </div>
+              )}
+
+              {/* Выиграли */}
+              {player.phase === "won" && player.pendingPrize && (
+                <div className="rounded-xl p-4 text-center" style={{
+                  background: "linear-gradient(135deg, rgba(0,50,80,0.95), rgba(0,20,60,0.95))",
+                  border: "1px solid rgba(0,220,255,0.6)",
+                  boxShadow: "0 0 30px rgba(0,200,255,0.3), 0 0 60px rgba(0,100,255,0.15)",
+                }}>
+                  {PRIZE_IMAGES[player.pendingPrize.id] ? (
+                    <img src={PRIZE_IMAGES[player.pendingPrize.id]} alt={player.pendingPrize.label}
+                      className="w-36 h-36 object-cover rounded-xl mx-auto mb-3"
+                      style={{ border: "2px solid rgba(0,220,255,0.8)", boxShadow: "0 0 16px rgba(0,200,255,0.5)" }} />
+                  ) : (
+                    <div className="text-4xl mb-3">{player.pendingPrize.emoji}</div>
+                  )}
+                  <div className="font-bold text-lg mb-1" style={{ color: "#00e5ff", textShadow: "0 0 10px rgba(0,200,255,0.8)" }}>
+                    🎉 {player.pendingPrize.label}!
                   </div>
-                )}
-
-                {/* Подсказка во время кручения */}
-                {(player.phase === "idle" || player.phase === "spinning" || !player.phase) && spinning && (
-                  <div className="w-full py-4 rounded-xl text-center font-bold text-lg"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(0,200,255,0.15), rgba(0,100,255,0.1))",
-                      border: "1px solid rgba(0,200,255,0.5)",
+                  <p className="text-xs mb-4" style={{ color: "rgba(0,200,255,0.6)" }}>
+                    Взять приз сейчас или рискнуть на следующее окно?
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={takePrize} className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all" style={{
+                      background: "linear-gradient(135deg, rgba(0,180,255,0.3), rgba(0,100,255,0.2))",
+                      border: "1px solid rgba(0,220,255,0.7)",
                       color: "#00e5ff",
-                      boxShadow: "0 0 20px rgba(0,200,255,0.3), 0 0 40px rgba(0,100,255,0.15)",
-                      textShadow: "0 0 10px rgba(0,200,255,0.8)",
+                      boxShadow: "0 0 14px rgba(0,200,255,0.4)",
                     }}>
-                    🌀 Крутится…
-                  </div>
-                )}
-
-                {/* Утешительный */}
-                {player.phase === "consolation" && (
-                  <div className="bg-[#2f3136] border border-[#72767d] rounded-xl p-4 text-center">
-                    <div className="text-4xl mb-2">🎁</div>
-                    <div className="text-white font-bold mb-1">Утешительный приз!</div>
-                    <p className="text-[#b9bbbe] text-sm mb-4">
-                      Все прокруты использованы — ты получаешь утешительный подарок!
-                    </p>
-                    {playerCount! > currentPlayerIndex + 1 ? (
-                      <button
-                        onClick={nextPlayer}
-                        className="w-full py-2.5 rounded-lg font-semibold bg-[#5865f2] text-white hover:bg-[#4752c4] transition-all"
-                      >
-                        Следующий игрок →
+                      ✅ Взять приз!
+                    </button>
+                    {player.currentWindow < PRIZES.length - 1 ? (
+                      <button onClick={continueSpin} className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all" style={{
+                        background: "rgba(0,50,255,0.15)",
+                        border: "1px solid rgba(0,150,255,0.5)",
+                        color: "#60b4ff",
+                        boxShadow: "0 0 10px rgba(0,100,255,0.3)",
+                      }}>
+                        🎲 Рискнуть
                       </button>
-                    ) : null}
+                    ) : (
+                      <button disabled className="flex-1 py-2.5 rounded-lg font-semibold text-sm" style={{
+                        border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.2)"
+                      }}>Макс. приз</button>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Взяли приз */}
-                {player.phase === "took" && (
-                  <div className="bg-[#2f3136] border border-[#3ba55c] rounded-xl p-4 text-center">
-                    <div className="text-4xl mb-2">🎊</div>
-                    <div className="text-[#3ba55c] font-bold mb-1">Приз получен!</div>
-                    <p className="text-[#b9bbbe] text-sm mb-4">
-                      {player.wonPrizes[player.wonPrizes.length - 1]?.emoji}{" "}
-                      {player.wonPrizes[player.wonPrizes.length - 1]?.label}
-                    </p>
-                    {playerCount! > currentPlayerIndex + 1 ? (
-                      <button
-                        onClick={nextPlayer}
-                        className="w-full py-2.5 rounded-lg font-semibold bg-[#5865f2] text-white hover:bg-[#4752c4] transition-all"
-                      >
-                        Следующий игрок →
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Лог */}
-            {player && (
-              <div className="w-full max-w-sm">
-                <div className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2">
+              {/* Лог */}
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "rgba(168,85,247,0.7)" }}>
                   Лог игры
                 </div>
                 <GameLog messages={player.log} />
               </div>
-            )}
-          </div>
-
-          {/* Поле сообщения (декор) */}
-          <div className="p-3 sm:p-4">
-            <div className="rounded-lg px-4 py-2.5 text-purple-400/50 text-sm" style={{ background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)" }}>
-              Сообщение #барабан
             </div>
           </div>
+
+          <div className="p-3 sm:p-4">
+            <div className="rounded-lg px-4 py-2.5 text-sm" style={{
+              background: "rgba(139,92,246,0.1)",
+              border: "1px solid rgba(139,92,246,0.2)",
+              color: "rgba(168,85,247,0.4)",
+            }}>Сообщение #слоты</div>
+          </div>
         </div>
 
-        {/* Правая панель — участники */}
-        <div className="hidden xl:block w-56 p-4" style={{ background: "rgba(20,3,40,0.8)", borderLeft: "1px solid rgba(139,92,246,0.2)" }}>
-          <div className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-3">
-            Игроки — {playerCount}
+        {/* Правая панель */}
+        <div className="hidden xl:block w-52 p-4" style={{ background: "rgba(20,3,40,0.8)", borderLeft: "1px solid rgba(139,92,246,0.2)" }}>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "rgba(168,85,247,0.7)" }}>
+            Комбинации
           </div>
-          <div className="space-y-2">
-            {players.map((p, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-[#36393f] transition-colors"
-                onClick={() => {
-                  if (!spinning) {
-                    setCurrentPlayerIndex(i);
-                    setWheelAngle(0);
-                    totalAngleRef.current = 0;
-                  }
-                }}
-              >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm relative"
-                  style={{
-                    background:
-                      p.phase === "took" || p.phase === "consolation"
-                        ? "#3ba55c"
-                        : i === currentPlayerIndex
-                        ? "#faa61a"
-                        : "#40444b",
-                    color: "#fff",
-                  }}
-                >
-                  {p.phase === "took" || p.phase === "consolation" ? "✓" : i + 1}
-                  <div
-                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2f3136]"
-                    style={{
-                      background:
-                        p.phase === "took" || p.phase === "consolation"
-                          ? "#3ba55c"
-                          : i === currentPlayerIndex
-                          ? "#faa61a"
-                          : "#8e9297",
-                    }}
-                  />
-                </div>
-                <div>
-                  <div
-                    className="text-sm font-medium"
-                    style={{
-                      color: i === currentPlayerIndex ? "#faa61a" : "#dcddde",
-                    }}
-                  >
-                    Игрок {i + 1}
-                  </div>
-                  <div className="text-[#b9bbbe] text-xs">
-                    {p.phase === "took"
-                      ? `🏆 ${p.wonPrizes[p.wonPrizes.length - 1]?.label ?? "Приз"}`
-                      : p.phase === "consolation"
-                      ? "🎁 Утешительный"
-                      : `${p.spinsUsed}/${TOTAL_SPINS} прокр.`}
-                  </div>
-                </div>
+          {PRIZES.map((pr) => (
+            <div key={pr.id} className="mb-2 p-2 rounded-lg" style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}>
+              <div className="text-xs font-bold mb-1" style={{ color: "rgba(255,255,255,0.7)" }}>
+                3× {pr.emoji}
               </div>
-            ))}
-          </div>
+              <div className="text-xs" style={{ color: pr.color }}>{pr.label}</div>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{Math.round(pr.winChance * 100)}% шанс</div>
+            </div>
+          ))}
         </div>
+
       </div>
+
+      {/* CSS анимация барабана */}
+      <style>{`
+        @keyframes reelSpin {
+          0%   { transform: translateY(0); }
+          100% { transform: translateY(-${90 * REEL_SYMBOLS.length}px); }
+        }
+      `}</style>
     </div>
   );
 }
