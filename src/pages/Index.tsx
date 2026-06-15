@@ -13,12 +13,16 @@ interface Prize {
 
 // Призы в порядке ценности (1й — самый ценный)
 const PRIZES: Prize[] = [
-  { id: 1, label: "Гран-при!", emoji: "👑", color: "#faa61a", winChance: 0.75 },
+  { id: 1, label: "Яблокорезка из нержавейки", emoji: "🍎", color: "#faa61a", winChance: 0.75 },
   { id: 2, label: "2-й приз",  emoji: "💎", color: "#5865f2", winChance: 0.45 },
   { id: 3, label: "3-й приз",  emoji: "🌸", color: "#eb459e", winChance: 0.35 },
   { id: 4, label: "4-й приз",  emoji: "🎀", color: "#3ba55c", winChance: 0.15 },
   { id: 5, label: "5-й приз",  emoji: "✨", color: "#ed4245", winChance: 0.05 },
 ];
+
+const PRIZE_IMAGES: Record<number, string> = {
+  1: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/3265aa2f-2583-414e-b309-bddc21ae2a40.png",
+};
 
 const CONSOLATION = { label: "Утешительный приз", emoji: "🎁", color: "#72767d" };
 
@@ -627,26 +631,36 @@ export default function Index() {
           <div className="flex-1 p-4 sm:p-6 flex flex-col items-center gap-6 overflow-y-auto">
 
             {/* Карточка текущего приза */}
-            {player && (
-              <div
-                className="w-full max-w-sm rounded-xl p-4 text-center border"
-                style={{
-                  borderColor: getPrizeForWindow(player.currentWindow).color + "66",
-                  background: getPrizeForWindow(player.currentWindow).color + "11",
-                }}
-              >
-                <div className="text-4xl mb-1">{getPrizeForWindow(player.currentWindow).emoji}</div>
+            {player && (() => {
+              const currentPrize = getPrizeForWindow(player.currentWindow);
+              const img = PRIZE_IMAGES[currentPrize.id];
+              return (
                 <div
-                  className="font-bold text-lg"
-                  style={{ color: getPrizeForWindow(player.currentWindow).color }}
+                  className="w-full max-w-sm rounded-xl p-4 text-center border overflow-hidden"
+                  style={{
+                    borderColor: currentPrize.color + "66",
+                    background: currentPrize.color + "11",
+                  }}
                 >
-                  {getPrizeForWindow(player.currentWindow).label}
+                  {img ? (
+                    <img
+                      src={img}
+                      alt={currentPrize.label}
+                      className="w-32 h-32 object-cover rounded-xl mx-auto mb-3 border-2"
+                      style={{ borderColor: currentPrize.color + "88" }}
+                    />
+                  ) : (
+                    <div className="text-4xl mb-3">{currentPrize.emoji}</div>
+                  )}
+                  <div className="font-bold text-lg" style={{ color: currentPrize.color }}>
+                    {currentPrize.label}
+                  </div>
+                  <div className="text-[#b9bbbe] text-sm mt-1">
+                    Шанс выиграть: {Math.round(currentPrize.winChance * 100)}%
+                  </div>
                 </div>
-                <div className="text-[#b9bbbe] text-sm mt-1">
-                  Шанс выиграть: {Math.round(getPrizeForWindow(player.currentWindow).winChance * 100)}%
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Колесо */}
             <Wheel angle={wheelAngle} spinning={spinning} />
@@ -664,9 +678,17 @@ export default function Index() {
                 {/* Состояние: выиграли — берём или продолжаем */}
                 {player.phase === "won" && player.pendingPrize && (
                   <div className="bg-[#2f3136] border border-[#faa61a] rounded-xl p-4 text-center">
-                    <div className="text-3xl mb-2">{player.pendingPrize.emoji}</div>
+                    {PRIZE_IMAGES[player.pendingPrize.id] ? (
+                      <img
+                        src={PRIZE_IMAGES[player.pendingPrize.id]}
+                        alt={player.pendingPrize.label}
+                        className="w-36 h-36 object-cover rounded-xl mx-auto mb-3 border-2 border-[#faa61a]"
+                      />
+                    ) : (
+                      <div className="text-3xl mb-2">{player.pendingPrize.emoji}</div>
+                    )}
                     <div className="text-white font-bold mb-1">
-                      Выпало: {player.pendingPrize.label}!
+                      🎉 Выпало: {player.pendingPrize.label}!
                     </div>
                     <p className="text-[#b9bbbe] text-xs mb-4">
                       Взять приз сейчас или рискнуть на следующее окно?
