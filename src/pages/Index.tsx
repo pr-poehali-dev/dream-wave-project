@@ -161,14 +161,14 @@ function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) 
 
 // Цвета секторов колеса (яркие, праздничные)
 const NEON_SECTORS = [
-  { emoji: "🍭", color: "#ff2d78", glow: "#ff2d78" },
-  { emoji: "🎁", color: "#faa61a", glow: "#faa61a" },
-  { emoji: "👑", color: "#a855f7", glow: "#a855f7" },
-  { emoji: "⭐", color: "#3b82f6", glow: "#3b82f6" },
-  { emoji: "🎉", color: "#10b981", glow: "#10b981" },
-  { emoji: "💎", color: "#f43f5e", glow: "#f43f5e" },
-  { emoji: "🌟", color: "#f59e0b", glow: "#f59e0b" },
-  { emoji: "🎀", color: "#8b5cf6", glow: "#8b5cf6" },
+  { emoji: "🍭", label: "Чупачупс",   color: "#ff2d78" },
+  { emoji: "🎁", label: "Подарок",    color: "#faa61a" },
+  { emoji: "👑", label: "Косметика",  color: "#a855f7" },
+  { emoji: "⭐", label: "Органайзер", color: "#3b82f6" },
+  { emoji: "🎉", label: "Удача!",     color: "#10b981" },
+  { emoji: "💎", label: "Яблорезка",  color: "#f43f5e" },
+  { emoji: "🌟", label: "Ролик",      color: "#f59e0b" },
+  { emoji: "🎀", label: "Сюрприз",    color: "#8b5cf6" },
 ];
 
 // ── Колесо ────────────────────────────────────────────────────────────────────
@@ -268,8 +268,12 @@ function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
                   stroke="rgba(0,0,0,0.4)" strokeWidth="2"
                 />
                 {/* Эмодзи */}
-                <text x={tx} y={ty} textAnchor="middle" dominantBaseline="central" fontSize="26" style={{ userSelect: "none" }}>
+                <text x={tx} y={ty - 10} textAnchor="middle" dominantBaseline="central" fontSize="24" style={{ userSelect: "none" }}>
                   {sector.emoji}
+                </text>
+                {/* Подпись */}
+                <text x={tx} y={ty + 16} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="bold" fill="rgba(255,255,255,0.9)" style={{ userSelect: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
+                  {sector.label}
                 </text>
               </g>
             );
@@ -370,14 +374,19 @@ function GameLog({ messages }: { messages: string[] }) {
   return (
     <div
       ref={ref}
-      className="bg-[#202225] rounded-lg p-3 space-y-1 overflow-y-auto"
-      style={{ maxHeight: 140 }}
+      className="rounded-xl p-3 space-y-1 overflow-y-auto"
+      style={{
+        maxHeight: 140,
+        background: "rgba(10,0,30,0.8)",
+        border: "1px solid rgba(235,69,158,0.4)",
+        boxShadow: "0 0 16px rgba(235,69,158,0.15), inset 0 0 20px rgba(168,85,247,0.05)",
+      }}
     >
       {messages.length === 0 && (
-        <p className="text-[#72767d] text-xs">Нажми «Крутить» — и начнём!</p>
+        <p className="text-purple-400/60 text-xs">Дёрни за рычаг — и начнём! 🎰</p>
       )}
       {messages.map((m, i) => (
-        <p key={i} className="text-[#dcddde] text-xs leading-relaxed">{m}</p>
+        <p key={i} className="text-xs leading-relaxed" style={{ color: m.includes("🎉") || m.includes("✅") ? "#4ade80" : m.includes("🎲") || m.includes("➡️") ? "#f59e0b" : "#c4b5fd" }}>{m}</p>
       ))}
     </div>
   );
@@ -744,38 +753,52 @@ export default function Index() {
       <div className="flex min-h-[calc(100vh-57px)]">
         {/* Боковая панель */}
         <div className="hidden lg:flex w-60 flex-col" style={{ background: "rgba(20,3,40,0.8)", borderRight: "1px solid rgba(139,92,246,0.2)" }}>
-          <div className="p-4" style={{ borderBottom: "1px solid rgba(139,92,246,0.2)" }}>
-            <h2 className="text-white font-semibold">🎪 Праздник</h2>
+          {/* Заголовок панели */}
+          <div className="p-4 relative overflow-hidden" style={{ borderBottom: "1px solid rgba(139,92,246,0.3)" }}>
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: "linear-gradient(135deg, rgba(235,69,158,0.15) 0%, rgba(88,101,242,0.1) 100%)",
+            }} />
+            <div className="relative">
+              <h2 className="font-bold text-base" style={{
+                background: "linear-gradient(135deg, #faa61a, #eb459e)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>🎪 Праздник</h2>
+              <p className="text-purple-400/60 text-xs mt-0.5">День рождения мамочки 🎂</p>
+            </div>
           </div>
+
           <div className="flex-1 p-2">
             {/* Призы-«каналы» */}
-            <div className="mb-3 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-              Призы
+            <div className="mb-2 px-2 py-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(168,85,247,0.7)" }}>
+              ✨ Призы
             </div>
             {PRIZES.map((pr, i) => {
               const inWindow = i === (player?.currentWindow ?? 0);
               return (
                 <div
                   key={pr.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-sm mb-0.5 transition-colors"
+                  className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm mb-1 transition-all"
                   style={{
-                    background: inWindow ? pr.color + "22" : "transparent",
-                    color: inWindow ? pr.color : "#8e9297",
+                    background: inWindow ? `${pr.color}25` : "transparent",
+                    color: inWindow ? pr.color : "rgba(168,85,247,0.5)",
+                    border: inWindow ? `1px solid ${pr.color}44` : "1px solid transparent",
+                    boxShadow: inWindow ? `0 0 10px ${pr.color}22` : "none",
                   }}
                 >
-                  <span>{pr.emoji}</span>
-                  <span className="flex-1 truncate">{pr.label}</span>
-                  <span className="text-xs opacity-70">{Math.round(pr.winChance * 100)}%</span>
+                  <span className="text-base">{pr.emoji}</span>
+                  <span className="flex-1 truncate text-xs">{pr.label}</span>
+                  <span className="text-xs font-bold opacity-80">{Math.round(pr.winChance * 100)}%</span>
                 </div>
               );
             })}
 
-            <div className="mt-4 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-              Гарантия
+            <div className="mt-3 mb-2 px-2 py-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "rgba(168,85,247,0.7)" }}>
+              🎁 Гарантия
             </div>
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-[#8e9297]">
+            <div className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm" style={{ color: "rgba(168,85,247,0.5)" }}>
               <span>{CONSOLATION.emoji}</span>
-              <span>Утешительный</span>
+              <span className="text-xs">Утешительный приз</span>
             </div>
           </div>
 
