@@ -86,9 +86,8 @@ function makePlayer(id: number): PlayerState {
 
 // Определяем приз для текущего окна (окна 0-4)
 function getPrizeForWindow(window: number): Prize {
-  // окно 0 → приз 5, окно 1 → приз 4, ... окно 4 → приз 1
-  const prizeIndex = PRIZES.length - 1 - window;
-  return PRIZES[Math.max(0, Math.min(prizeIndex, PRIZES.length - 1))];
+  // окно 0 → приз 1 (Чупачупс), окно 4 → приз 5 (Косметика)
+  return PRIZES[Math.max(0, Math.min(window, PRIZES.length - 1))];
 }
 
 // ── Колесо ────────────────────────────────────────────────────────────────────
