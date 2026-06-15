@@ -14,7 +14,7 @@ interface Prize {
 // Призы в порядке ценности (1й — самый ценный)
 const PRIZES: Prize[] = [
   { id: 1, label: "Яблокорезка из нержавейки", emoji: "🍎", color: "#faa61a", winChance: 0.75 },
-  { id: 2, label: "2-й приз",  emoji: "💎", color: "#5865f2", winChance: 0.45 },
+  { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.45 },
   { id: 3, label: "3-й приз",  emoji: "🌸", color: "#eb459e", winChance: 0.35 },
   { id: 4, label: "4-й приз",  emoji: "🎀", color: "#3ba55c", winChance: 0.15 },
   { id: 5, label: "5-й приз",  emoji: "✨", color: "#ed4245", winChance: 0.05 },
@@ -22,6 +22,7 @@ const PRIZES: Prize[] = [
 
 const PRIZE_IMAGES: Record<number, string> = {
   1: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/3265aa2f-2583-414e-b309-bddc21ae2a40.png",
+  2: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/5c9ce5b3-e991-4669-9848-87f8d2c2e4ec.png",
 };
 
 const CONSOLATION = { label: "Утешительный приз", emoji: "🎁", color: "#72767d" };
