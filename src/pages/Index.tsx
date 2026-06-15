@@ -159,17 +159,23 @@ function Lever({ onPull, disabled }: { onPull: () => void; disabled: boolean }) 
   );
 }
 
-// Цвета секторов колеса (яркие, праздничные) — все в голубом неоновом стиле
-const NEON_SECTORS = [
-  { emoji: "🍭", label: "Чупачупс",   color: "#00e5ff" },
-  { emoji: "🎁", label: "Подарок",    color: "#0091ff" },
-  { emoji: "👑", label: "Косметика",  color: "#00cfff" },
-  { emoji: "⭐", label: "Органайзер", color: "#006fff" },
-  { emoji: "🎉", label: "Удача!",     color: "#00b8ff" },
-  { emoji: "💎", label: "Яблорезка",  color: "#0055ff" },
-  { emoji: "🌟", label: "Ролик",      color: "#00d4ff" },
-  { emoji: "🎀", label: "Сюрприз",    color: "#0077ff" },
+const SPRITE_URL = "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/3b4e2cfb-fc7a-4f78-9a58-95020566dfb2.png";
+
+// Координаты спрайта (col, row) — 3×3 сетка
+// 0=яблоко, 1=лайм, 2=сердце, 3=вишня, 4=BAR, 5=колокол, 6=семёрка, 7=виноград, 8=арбуз
+const SLOT_ICONS = [
+  { col: 0, row: 0, label: "Яблоко",   color: "#ff2d55" }, // яблоко
+  { col: 2, row: 0, label: "Сердце",   color: "#ff3b6b" }, // сердце
+  { col: 0, row: 1, label: "Вишня",    color: "#cc2222" }, // вишня
+  { col: 2, row: 1, label: "Колокол",  color: "#ffd700" }, // колокол
+  { col: 0, row: 2, label: "Семёрка",  color: "#ff8c00" }, // 7
+  { col: 1, row: 2, label: "Виноград", color: "#9b59b6" }, // виноград
+  { col: 2, row: 2, label: "Арбуз",    color: "#2ecc71" }, // арбуз
+  { col: 1, row: 0, label: "Лайм",     color: "#88cc00" }, // лайм
 ];
+
+// Цвета секторов колеса (яркие, праздничные) — все в голубом неоновом стиле
+const NEON_SECTORS = SLOT_ICONS.map(s => ({ ...s, emoji: "" }));
 
 const WIN_SOUND = "https://cdn.discordapp.com/attachments/1407625036667293818/1515959445455114270/GameboyJones_-_HIT_THE_JACKPOT_Hakari_Dance_80967376_cut_17sec.mp3?ex=6a30e6c0&is=6a2f9540&hm=db43b7fda22bf85f0f1e7c8674573263f7b144500dd4cc7705a2680822af3184&";
 
@@ -242,9 +248,14 @@ function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
           <defs>
             {sectors.map((s, i) => (
               <radialGradient key={i} id={`sg${i}`} cx="50%" cy="100%" r="80%">
-                <stop offset="0%" stopColor="#fff" stopOpacity="0.15" />
+                <stop offset="0%" stopColor="#fff" stopOpacity="0.12" />
                 <stop offset="100%" stopColor={s.color} stopOpacity="0" />
               </radialGradient>
+            ))}
+            {sectors.map((_s, i) => (
+              <clipPath key={i} id={`clip${i}`}>
+                <circle cx="0" cy="0" r="28" />
+              </clipPath>
             ))}
           </defs>
 
@@ -256,41 +267,38 @@ function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
             const x2 = 150 + R * Math.cos(endA);
             const y2 = 150 + R * Math.sin(endA);
             const midA = ((i + 0.5) * sectorAngle - 90) * (Math.PI / 180);
-            const tx = 150 + 95 * Math.cos(midA);
-            const ty = 150 + 95 * Math.sin(midA);
+            const tx = 150 + 90 * Math.cos(midA);
+            const ty = 150 + 90 * Math.sin(midA);
             return (
               <g key={i}>
                 {/* Основной сектор */}
-                <path
-                  d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`}
-                  fill={sector.color}
-                />
-                {/* Бликовый слой */}
-                <path
-                  d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`}
-                  fill={`url(#sg${i})`}
-                />
+                <path d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`} fill={sector.color} opacity="0.85" />
+                {/* Блик */}
+                <path d={`M 150 150 L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z`} fill={`url(#sg${i})`} />
                 {/* Разделитель */}
-                <line
-                  x1="150" y1="150" x2={x1} y2={y1}
-                  stroke="rgba(0,0,0,0.4)" strokeWidth="2"
-                />
-                {/* Эмодзи */}
-                <text x={tx} y={ty - 10} textAnchor="middle" dominantBaseline="central" fontSize="24" style={{ userSelect: "none" }}>
-                  {sector.emoji}
-                </text>
-                {/* Подпись */}
-                <text x={tx} y={ty + 16} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="bold" fill="rgba(255,255,255,0.9)" style={{ userSelect: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
-                  {sector.label}
-                </text>
+                <line x1="150" y1="150" x2={x1} y2={y1} stroke="rgba(0,0,0,0.5)" strokeWidth="2.5" />
+                {/* Иконка из спрайта */}
+                <circle cx={tx} cy={ty} r="22" fill="rgba(255,255,255,0.95)" />
+                <foreignObject x={tx - 21} y={ty - 21} width="42" height="42" style={{ overflow: "hidden", borderRadius: "50%" }}>
+                  <div
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      backgroundImage: `url(${SPRITE_URL})`,
+                      backgroundSize: "300% 300%",
+                      backgroundPosition: `${sector.col * 50}% ${sector.row * 50}%`,
+                    }}
+                  />
+                </foreignObject>
               </g>
             );
           })}
 
           {/* Центральный диск */}
-          <circle cx="150" cy="150" r="32" fill="#0d001a" stroke="#faa61a" strokeWidth="3" />
-          <circle cx="150" cy="150" r="28" fill="none" stroke="rgba(250,166,26,0.3)" strokeWidth="1" />
-          <text x="150" y="150" textAnchor="middle" dominantBaseline="central" fontSize="24">🎂</text>
+          <circle cx="150" cy="150" r="32" fill="#0d001a" stroke="#00e5ff" strokeWidth="3" style={{ filter: "drop-shadow(0 0 6px #00e5ff)" }} />
+          <text x="150" y="150" textAnchor="middle" dominantBaseline="central" fontSize="22">🎰</text>
         </svg>
       </div>
 
