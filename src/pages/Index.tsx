@@ -1,472 +1,847 @@
-import { useState } from "react";
-import {
-  Download,
-  Shield,
-  Zap,
-  Eye,
-  Clock,
-  Github,
-  ArrowRight,
-  Hash,
-  Users,
-  Mic,
-  Settings,
-  Bell,
-  Search,
-  Menu,
-  X,
-  Monitor,
-} from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import Icon from "@/components/ui/icon";
 
-const Index = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+// ── Типы призов ──────────────────────────────────────────────────────────────
+interface Prize {
+  id: number;
+  label: string;
+  emoji: string;
+  color: string;
+  winChance: number; // шанс выпадения в своём окне (5 прокрутов)
+}
+
+// Призы в порядке ценности (1й — самый ценный)
+const PRIZES: Prize[] = [
+  { id: 1, label: "Гран-при!", emoji: "👑", color: "#faa61a", winChance: 0.75 },
+  { id: 2, label: "2-й приз",  emoji: "💎", color: "#5865f2", winChance: 0.45 },
+  { id: 3, label: "3-й приз",  emoji: "🌸", color: "#eb459e", winChance: 0.35 },
+  { id: 4, label: "4-й приз",  emoji: "🎀", color: "#3ba55c", winChance: 0.15 },
+  { id: 5, label: "5-й приз",  emoji: "✨", color: "#ed4245", winChance: 0.05 },
+];
+
+const CONSOLATION = { label: "Утешительный приз", emoji: "🎁", color: "#72767d" };
+
+// Сколько прокрутов в каждом «окне» (5 прокрутов → 1 окно)
+const WINDOW_SIZE = 5;
+const TOTAL_SPINS = 25;
+const MAX_PLAYERS = 4;
+
+// Сектора на колесе (8 штук, смешаны)
+const WHEEL_SECTORS = [
+  { emoji: "👑", color: "#faa61a" },
+  { emoji: "💎", color: "#5865f2" },
+  { emoji: "🌸", color: "#eb459e" },
+  { emoji: "🎀", color: "#3ba55c" },
+  { emoji: "✨", color: "#ed4245" },
+  { emoji: "💫", color: "#4752c4" },
+  { emoji: "🎂", color: "#c27c0e" },
+  { emoji: "🏆", color: "#3b82f6" },
+];
+
+const SECTOR_COUNT = WHEEL_SECTORS.length;
+const SECTOR_ANGLE = 360 / SECTOR_COUNT;
+
+// ── Типы состояния игры ───────────────────────────────────────────────────────
+type GamePhase =
+  | "idle"        // ещё не начали
+  | "spinning"    // барабан крутится
+  | "won"         // выиграли — предлагаем взять или крутить дальше
+  | "took"        // взяли приз — игра окончена
+  | "lost"        // остановились на уже выигранном но потом проиграли
+  | "consolation" // получили утешительный
+  | "done";       // финал (все 25 прокрутов)
+
+interface PlayerState {
+  id: number;
+  spinsUsed: number;      // всего прокрутов использовано
+  currentWindow: number;  // текущее «окно» 0-4 (каждое = 5 прокрутов)
+  spinsInWindow: number;  // прокрутов в текущем окне
+  wonPrizes: Prize[];     // выигранные призы (накопленные)
+  pendingPrize: Prize | null; // приз, который сейчас предлагают взять
+  phase: GamePhase;
+  log: string[];          // лог событий
+}
+
+function makePlayer(id: number): PlayerState {
+  return {
+    id,
+    spinsUsed: 0,
+    currentWindow: 0,
+    spinsInWindow: 0,
+    wonPrizes: [],
+    pendingPrize: null,
+    phase: "idle",
+    log: [],
+  };
+}
+
+// Определяем приз для текущего окна (окна 0-4)
+function getPrizeForWindow(window: number): Prize {
+  // окно 0 → приз 5, окно 1 → приз 4, ... окно 4 → приз 1
+  const prizeIndex = PRIZES.length - 1 - window;
+  return PRIZES[Math.max(0, Math.min(prizeIndex, PRIZES.length - 1))];
+}
+
+// ── Колесо ────────────────────────────────────────────────────────────────────
+function Wheel({ angle, spinning }: { angle: number; spinning: boolean }) {
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
+      {/* Внешнее кольцо */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: "conic-gradient(from 0deg, #202225 0%, #36393f 50%, #202225 100%)",
+          boxShadow: "0 0 40px rgba(88,101,242,0.4), inset 0 0 20px rgba(0,0,0,0.5)",
+        }}
+      />
+
+      {/* Колесо */}
+      <div
+        className="absolute rounded-full overflow-hidden"
+        style={{
+          width: 260,
+          height: 260,
+          transform: `rotate(${angle}deg)`,
+          transition: spinning ? "transform 3s cubic-bezier(0.17, 0.67, 0.12, 0.99)" : "none",
+        }}
+      >
+        <svg width="260" height="260" viewBox="0 0 260 260">
+          {WHEEL_SECTORS.map((sector, i) => {
+            const startAngle = (i * SECTOR_ANGLE - 90) * (Math.PI / 180);
+            const endAngle = ((i + 1) * SECTOR_ANGLE - 90) * (Math.PI / 180);
+            const x1 = 130 + 130 * Math.cos(startAngle);
+            const y1 = 130 + 130 * Math.sin(startAngle);
+            const x2 = 130 + 130 * Math.cos(endAngle);
+            const y2 = 130 + 130 * Math.sin(endAngle);
+            const midAngle = ((i + 0.5) * SECTOR_ANGLE - 90) * (Math.PI / 180);
+            const textX = 130 + 80 * Math.cos(midAngle);
+            const textY = 130 + 80 * Math.sin(midAngle);
+            return (
+              <g key={i}>
+                <path
+                  d={`M 130 130 L ${x1} ${y1} A 130 130 0 0 1 ${x2} ${y2} Z`}
+                  fill={sector.color}
+                  stroke="#202225"
+                  strokeWidth="2"
+                  opacity="0.85"
+                />
+                <text
+                  x={textX}
+                  y={textY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="22"
+                  style={{ userSelect: "none" }}
+                >
+                  {sector.emoji}
+                </text>
+              </g>
+            );
+          })}
+          {/* Центральный круг */}
+          <circle cx="130" cy="130" r="28" fill="#2f3136" stroke="#202225" strokeWidth="3" />
+          <text x="130" y="130" textAnchor="middle" dominantBaseline="central" fontSize="20">🎂</text>
+        </svg>
+      </div>
+
+      {/* Стрелка-указатель */}
+      <div
+        className="absolute"
+        style={{
+          top: -8,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 0,
+          height: 0,
+          borderLeft: "12px solid transparent",
+          borderRight: "12px solid transparent",
+          borderTop: "24px solid #faa61a",
+          filter: "drop-shadow(0 2px 4px rgba(250,166,26,0.6))",
+          zIndex: 10,
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Прогресс-бар прокрутов ────────────────────────────────────────────────────
+function SpinProgress({ player }: { player: PlayerState }) {
+  const total = TOTAL_SPINS;
+  const used = player.spinsUsed;
+  const pct = (used / total) * 100;
 
   return (
-    <div className="min-h-screen bg-[#36393f] text-white overflow-x-hidden">
-      {/* Навигация в стиле Discord */}
-      <nav className="bg-[#2f3136] border-b border-[#202225] px-4 sm:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#5865f2] rounded-full flex items-center justify-center">
-              <Monitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+    <div className="w-full">
+      <div className="flex justify-between text-xs text-[#b9bbbe] mb-1">
+        <span>Прокруты: {used}/{total}</span>
+        <span>Окно {player.currentWindow + 1}/5</span>
+      </div>
+      <div className="h-2 bg-[#202225] rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, #5865f2, #faa61a)",
+          }}
+        />
+      </div>
+      {/* Окна */}
+      <div className="flex gap-1 mt-2">
+        {Array.from({ length: 5 }).map((_, wi) => {
+          const windowPrize = getPrizeForWindow(wi);
+          const isPast = wi < player.currentWindow;
+          const isCurrent = wi === player.currentWindow;
+          return (
+            <div
+              key={wi}
+              className="flex-1 rounded text-center py-1 text-xs font-semibold border"
+              style={{
+                borderColor: isCurrent ? windowPrize.color : "#40444b",
+                background: isCurrent ? windowPrize.color + "22" : isPast ? "#1a1b1e" : "transparent",
+                color: isCurrent ? windowPrize.color : isPast ? "#4f545c" : "#8e9297",
+              }}
+            >
+              {windowPrize.emoji}
+              <div style={{ fontSize: 9 }}>
+                {Math.round(windowPrize.winChance * 100)}%
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white">Дискордик</h1>
-              <p className="text-xs text-[#b9bbbe] hidden sm:block">Rich Presence для Figma в Discord</p>
-            </div>
-          </div>
-          <div className="hidden sm:flex items-center gap-4">
-            <Button variant="ghost" className="text-[#b9bbbe] hover:text-white hover:bg-[#40444b]">
-              <Github className="w-4 h-4 mr-2" />
-              GitHub
-            </Button>
-            <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 py-2 rounded text-sm font-medium">
-              Скачать
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            className="sm:hidden text-[#b9bbbe] hover:text-white hover:bg-[#40444b] p-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Лог сообщений ─────────────────────────────────────────────────────────────
+function GameLog({ messages }: { messages: string[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [messages]);
+
+  return (
+    <div
+      ref={ref}
+      className="bg-[#202225] rounded-lg p-3 space-y-1 overflow-y-auto"
+      style={{ maxHeight: 140 }}
+    >
+      {messages.length === 0 && (
+        <p className="text-[#72767d] text-xs">Нажми «Крутить» — и начнём!</p>
+      )}
+      {messages.map((m, i) => (
+        <p key={i} className="text-[#dcddde] text-xs leading-relaxed">{m}</p>
+      ))}
+    </div>
+  );
+}
+
+// ── Главный компонент ─────────────────────────────────────────────────────────
+export default function Index() {
+  const [playerCount, setPlayerCount] = useState<number | null>(null);
+  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+  const [players, setPlayers] = useState<PlayerState[]>([]);
+  const [wheelAngle, setWheelAngle] = useState(0);
+  const [spinning, setSpinning] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [resultText, setResultText] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const totalAngleRef = useRef(0);
+
+  const player = players[currentPlayerIndex] ?? null;
+
+  function startGame(count: number) {
+    setPlayerCount(count);
+    setPlayers(Array.from({ length: count }, (_, i) => makePlayer(i + 1)));
+    setCurrentPlayerIndex(0);
+    setWheelAngle(0);
+    totalAngleRef.current = 0;
+  }
+
+  function updatePlayer(update: Partial<PlayerState> | ((p: PlayerState) => PlayerState)) {
+    setPlayers((prev) =>
+      prev.map((p, i) =>
+        i === currentPlayerIndex
+          ? typeof update === "function"
+            ? update(p)
+            : { ...p, ...update }
+          : p
+      )
+    );
+  }
+
+  function addLog(msg: string) {
+    updatePlayer((p) => ({ ...p, log: [...p.log, msg] }));
+  }
+
+  function spin() {
+    if (!player || spinning) return;
+    if (player.phase === "won") return; // нужно принять решение
+
+    // Вращаем колесо
+    const extraSpins = 5 + Math.floor(Math.random() * 5); // 5-9 оборотов
+    const extraAngle = Math.floor(Math.random() * 360);
+    const delta = extraSpins * 360 + extraAngle;
+    totalAngleRef.current += delta;
+    setWheelAngle(totalAngleRef.current);
+    setSpinning(true);
+
+    // После анимации
+    setTimeout(() => {
+      setSpinning(false);
+
+      setPlayers((prev) => {
+        const p = { ...prev[currentPlayerIndex] };
+        const newSpinsUsed = p.spinsUsed + 1;
+        const newSpinsInWindow = p.spinsInWindow + 1;
+        const currentWindow = p.currentWindow;
+        const prize = getPrizeForWindow(currentWindow);
+        const log = [...p.log];
+
+        log.push(`Прокрут #${newSpinsUsed} (окно ${currentWindow + 1}, шанс ${Math.round(prize.winChance * 100)}%)`);
+
+        // Проверяем выигрыш
+        const roll = Math.random();
+        const won = roll < prize.winChance;
+
+        let newPhase: GamePhase = p.phase;
+        let pendingPrize = p.pendingPrize;
+        let wonPrizes = p.wonPrizes;
+
+        if (won) {
+          // Выиграли приз в этом окне!
+          log.push(`🎉 Выпало: ${prize.emoji} ${prize.label}!`);
+          pendingPrize = prize;
+          wonPrizes = [...p.wonPrizes, prize];
+          newPhase = "won";
+        } else {
+          log.push(`Не выпало. Продолжаем…`);
+
+          // Проверяем: завершили окно (5 прокрутов)?
+          if (newSpinsInWindow >= WINDOW_SIZE) {
+            // Переходим к следующему окну
+            const nextWindow = currentWindow + 1;
+            if (newSpinsUsed >= TOTAL_SPINS || nextWindow >= PRIZES.length) {
+              // Все 25 прокрутов — утешительный приз
+              log.push(`🎁 Все прокруты использованы! Получаешь утешительный приз.`);
+              newPhase = "consolation";
+            } else {
+              log.push(`➡️ Следующее окно! Теперь разыгрывается: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label}`);
+              // сбросим spinsInWindow в след. итерации
+              const updatedPlayer: PlayerState = {
+                ...p,
+                spinsUsed: newSpinsUsed,
+                spinsInWindow: 0,
+                currentWindow: nextWindow,
+                pendingPrize,
+                wonPrizes,
+                phase: newPhase,
+                log,
+              };
+              return prev.map((pl, i) => (i === currentPlayerIndex ? updatedPlayer : pl));
+            }
+          }
+        }
+
+        const updatedPlayer: PlayerState = {
+          ...p,
+          spinsUsed: newSpinsUsed,
+          spinsInWindow: won ? p.spinsInWindow : newSpinsInWindow,
+          currentWindow: p.currentWindow,
+          pendingPrize,
+          wonPrizes,
+          phase: newPhase,
+          log,
+        };
+        return prev.map((pl, i) => (i === currentPlayerIndex ? updatedPlayer : pl));
+      });
+    }, 3200);
+  }
+
+  function takePrize() {
+    if (!player || !player.pendingPrize) return;
+    addLog(`✅ Игрок взял ${player.pendingPrize.emoji} ${player.pendingPrize.label}!`);
+    updatePlayer({ phase: "took" });
+  }
+
+  function continueSpin() {
+    if (!player) return;
+    // Отказался от приза — продолжает, но если проиграет — теряет ВСЁ
+    addLog(`🎲 Продолжаем! Выигранные призы аннулируются если проиграешь…`);
+    // Переходим к следующему окну после выигрыша
+    const nextWindow = player.currentWindow + 1;
+    if (player.spinsUsed >= TOTAL_SPINS || nextWindow >= PRIZES.length) {
+      addLog(`🎁 Больше прокрутов нет — утешительный приз!`);
+      updatePlayer({ phase: "consolation", pendingPrize: null });
+    } else {
+      addLog(`➡️ Следующее окно: ${getPrizeForWindow(nextWindow).emoji} ${getPrizeForWindow(nextWindow).label} (${Math.round(getPrizeForWindow(nextWindow).winChance * 100)}%)`);
+      updatePlayer({
+        phase: "idle",
+        pendingPrize: null,
+        currentWindow: nextWindow,
+        spinsInWindow: 0,
+      });
+    }
+  }
+
+  function nextPlayer() {
+    const next = currentPlayerIndex + 1;
+    if (next < (playerCount ?? 0)) {
+      setCurrentPlayerIndex(next);
+      setWheelAngle(0);
+      totalAngleRef.current = 0;
+    }
+  }
+
+  function resetGame() {
+    setPlayerCount(null);
+    setPlayers([]);
+    setCurrentPlayerIndex(0);
+    setWheelAngle(0);
+    totalAngleRef.current = 0;
+    setShowResult(false);
+  }
+
+  const isGameOver =
+    player &&
+    (player.phase === "took" ||
+      player.phase === "consolation" ||
+      player.phase === "done");
+
+  const allDone =
+    playerCount !== null &&
+    players.length === playerCount &&
+    players.every(
+      (p) =>
+        p.phase === "took" || p.phase === "consolation" || p.phase === "done"
+    );
+
+  // ── Экран выбора игроков ──────────────────────────────────────────────────
+  if (playerCount === null) {
+    return (
+      <div className="min-h-screen bg-[#36393f] flex flex-col items-center justify-center p-6">
+        <div className="text-center mb-10">
+          <div className="text-7xl mb-4 animate-bounce">🎂</div>
+          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-2">
+            Барабан Удачи
+          </h1>
+          <p className="text-[#b9bbbe] text-lg">С днём рождения, мамочка! 🎉</p>
         </div>
 
-        {/* Мобильное меню */}
-        {mobileMenuOpen && (
-          <div className="sm:hidden mt-4 pt-4 border-t border-[#202225]">
-            <div className="flex flex-col gap-3">
-              <Button variant="ghost" className="text-[#b9bbbe] hover:text-white hover:bg-[#40444b] justify-start">
-                <Github className="w-4 h-4 mr-2" />
-                GitHub
-              </Button>
-              <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 py-2 rounded text-sm font-medium">
-                Скачать
-              </Button>
-            </div>
+        <div className="bg-[#2f3136] border border-[#202225] rounded-xl p-8 w-full max-w-md">
+          <h2 className="text-white font-semibold text-xl mb-2 text-center">
+            Сколько участников?
+          </h2>
+          <p className="text-[#8e9297] text-sm text-center mb-6">
+            Максимум {MAX_PLAYERS} человека
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((n) => (
+              <button
+                key={n}
+                onClick={() => startGame(n)}
+                className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border border-[#40444b] hover:border-[#5865f2] hover:bg-[#5865f2]/10 transition-all group"
+              >
+                <span className="text-3xl">{["👤", "👥", "👨‍👩‍👦", "👨‍👩‍👧‍👦"][n - 1]}</span>
+                <span className="text-white font-bold text-xl group-hover:text-[#5865f2] transition-colors">
+                  {n}
+                </span>
+                <span className="text-[#8e9297] text-xs">
+                  {n === 1 ? "участник" : n < 5 ? "участника" : "участников"}
+                </span>
+              </button>
+            ))}
           </div>
-        )}
-      </nav>
+        </div>
+      </div>
+    );
+  }
 
-      {/* Макет в стиле Discord */}
-      <div className="flex min-h-screen">
-        {/* Боковая панель серверов - скрыта на мобильных */}
-        <div className="hidden lg:flex w-[72px] bg-[#202225] flex-col items-center py-3 gap-2">
-          <div className="w-12 h-12 bg-[#5865f2] rounded-2xl hover:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer">
-            <Monitor className="w-6 h-6 text-white" />
-          </div>
-          <div className="w-8 h-[2px] bg-[#36393f] rounded-full"></div>
-          {[1, 2, 3, 4].map((i) => (
+  // ── Экран итогов ──────────────────────────────────────────────────────────
+  if (allDone) {
+    return (
+      <div className="min-h-screen bg-[#36393f] flex flex-col items-center justify-center p-6">
+        <div className="text-center mb-8">
+          <div className="text-6xl mb-4">🏆</div>
+          <h1 className="text-3xl font-bold text-white mb-2">Игра завершена!</h1>
+          <p className="text-[#b9bbbe]">Итоги праздничного барабана</p>
+        </div>
+
+        <div className="bg-[#2f3136] border border-[#202225] rounded-xl p-6 w-full max-w-lg mb-6">
+          {players.map((p, i) => (
             <div
               key={i}
-              className="w-12 h-12 bg-[#36393f] rounded-3xl hover:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer hover:bg-[#5865f2]"
+              className="flex items-center gap-3 p-3 rounded-lg mb-2 last:mb-0"
+              style={{ background: "#36393f" }}
             >
-              <span className="text-[#dcddde] text-sm font-medium">{i}</span>
+              <div className="w-10 h-10 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white">
+                {i + 1}
+              </div>
+              <div className="flex-1">
+                <div className="text-white font-medium">Игрок {i + 1}</div>
+                <div className="text-[#b9bbbe] text-sm">
+                  {p.phase === "consolation"
+                    ? `${CONSOLATION.emoji} ${CONSOLATION.label}`
+                    : p.phase === "took" && p.pendingPrize
+                    ? `${p.pendingPrize.emoji} ${p.pendingPrize.label}`
+                    : p.phase === "took" && p.wonPrizes.length > 0
+                    ? `${p.wonPrizes[p.wonPrizes.length - 1].emoji} ${p.wonPrizes[p.wonPrizes.length - 1].label}`
+                    : "Ничего не выиграл"}
+                </div>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Основной контент */}
-        <div className="flex-1 flex flex-col lg:flex-row">
-          {/* Боковая панель каналов */}
-          <div
-            className={`${mobileSidebarOpen ? "block" : "hidden"} lg:block w-full lg:w-60 bg-[#2f3136] flex flex-col`}
+        <button
+          onClick={resetGame}
+          className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-8 py-3 rounded-xl font-semibold text-lg transition-colors"
+        >
+          🔄 Играть снова
+        </button>
+      </div>
+    );
+  }
+
+  // ── Основной экран игры ───────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-[#36393f] text-white overflow-x-hidden">
+      {/* Навбар */}
+      <nav className="bg-[#2f3136] border-b border-[#202225] px-4 py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#faa61a] rounded-full flex items-center justify-center text-xl">
+              🎂
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white">Барабан Удачи</h1>
+              <p className="text-xs text-[#b9bbbe]">С днём рождения! 🎉</p>
+            </div>
+          </div>
+
+          {/* Переключатель игроков */}
+          <div className="hidden sm:flex items-center gap-2">
+            {players.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (!spinning) {
+                    setCurrentPlayerIndex(i);
+                    setWheelAngle(0);
+                    totalAngleRef.current = 0;
+                  }
+                }}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all"
+                style={{
+                  borderColor:
+                    i === currentPlayerIndex ? "#faa61a" : "#40444b",
+                  background:
+                    p.phase === "took" || p.phase === "consolation"
+                      ? "#3ba55c"
+                      : i === currentPlayerIndex
+                      ? "#faa61a22"
+                      : "#36393f",
+                  color:
+                    i === currentPlayerIndex ? "#faa61a" : "#8e9297",
+                }}
+              >
+                {p.phase === "took" || p.phase === "consolation" ? "✓" : i + 1}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={resetGame}
+            className="text-[#8e9297] hover:text-white text-xs px-3 py-1.5 rounded border border-[#40444b] hover:border-[#8e9297] transition-all"
           >
-            <div className="p-4 border-b border-[#202225] flex items-center justify-between">
-              <h2 className="text-white font-semibold text-base">Сервер Дискордик</h2>
-              <Button
-                variant="ghost"
-                className="lg:hidden text-[#b9bbbe] hover:text-white hover:bg-[#40444b] p-1"
-                onClick={() => setMobileSidebarOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
+            Заново
+          </button>
+        </div>
+      </nav>
+
+      {/* Макет Discord */}
+      <div className="flex min-h-[calc(100vh-57px)]">
+        {/* Боковая панель */}
+        <div className="hidden lg:flex w-60 bg-[#2f3136] flex-col">
+          <div className="p-4 border-b border-[#202225]">
+            <h2 className="text-white font-semibold">🎪 Праздник</h2>
+          </div>
+          <div className="flex-1 p-2">
+            {/* Призы-«каналы» */}
+            <div className="mb-3 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
+              Призы
             </div>
-            <div className="flex-1 p-2">
-              <div className="mb-4">
-                <div className="flex items-center gap-1 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-                  <ArrowRight className="w-3 h-3" />
-                  <span>Текстовые каналы</span>
+            {PRIZES.map((pr, i) => {
+              const inWindow = i === (player?.currentWindow ?? 0);
+              return (
+                <div
+                  key={pr.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-sm mb-0.5 transition-colors"
+                  style={{
+                    background: inWindow ? pr.color + "22" : "transparent",
+                    color: inWindow ? pr.color : "#8e9297",
+                  }}
+                >
+                  <span>{pr.emoji}</span>
+                  <span className="flex-1 truncate">{pr.label}</span>
+                  <span className="text-xs opacity-70">{Math.round(pr.winChance * 100)}%</span>
                 </div>
-                <div className="mt-1 space-y-0.5">
-                  {["общий", "новости", "витрина", "помощь"].map((channel) => (
-                    <div
-                      key={channel}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded text-[#8e9297] hover:text-[#dcddde] hover:bg-[#393c43] cursor-pointer"
-                    >
-                      <Hash className="w-4 h-4" />
-                      <span className="text-sm">{channel}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center gap-1 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
-                  <ArrowRight className="w-3 h-3" />
-                  <span>Голосовые каналы</span>
-                </div>
-                <div className="mt-1 space-y-0.5">
-                  {["Общий", "Обзор дизайна"].map((channel) => (
-                    <div
-                      key={channel}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded text-[#8e9297] hover:text-[#dcddde] hover:bg-[#393c43] cursor-pointer"
-                    >
-                      <Mic className="w-4 h-4" />
-                      <span className="text-sm">{channel}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              );
+            })}
+
+            <div className="mt-4 px-2 py-1 text-[#8e9297] text-xs font-semibold uppercase tracking-wide">
+              Гарантия
             </div>
-            {/* Область пользователя */}
-            <div className="p-2 bg-[#292b2f] flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#5865f2] rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">А</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-white text-sm font-medium truncate">Алексей</div>
-                <div className="text-[#b9bbbe] text-xs truncate">#1234</div>
-              </div>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" className="w-8 h-8 p-0 hover:bg-[#40444b]">
-                  <Mic className="w-4 h-4 text-[#b9bbbe]" />
-                </Button>
-                <Button variant="ghost" size="sm" className="w-8 h-8 p-0 hover:bg-[#40444b]">
-                  <Settings className="w-4 h-4 text-[#b9bbbe]" />
-                </Button>
-              </div>
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded text-sm text-[#8e9297]">
+              <span>{CONSOLATION.emoji}</span>
+              <span>Утешительный</span>
             </div>
           </div>
 
-          {/* Область чата */}
-          <div className="flex-1 flex flex-col">
-            {/* Заголовок чата */}
-            <div className="h-12 bg-[#36393f] border-b border-[#202225] flex items-center px-4 gap-2">
-              <Button
-                variant="ghost"
-                className="lg:hidden text-[#8e9297] hover:text-[#dcddde] hover:bg-[#40444b] p-1 mr-2"
-                onClick={() => setMobileSidebarOpen(true)}
-              >
-                <Menu className="w-5 h-5" />
-              </Button>
-              <Hash className="w-5 h-5 text-[#8e9297]" />
-              <span className="text-white font-semibold">витрина</span>
-              <div className="w-px h-6 bg-[#40444b] mx-2 hidden sm:block"></div>
-              <span className="text-[#8e9297] text-sm hidden sm:block">Показывай свою работу в Figma с Дискордик</span>
-              <div className="ml-auto flex items-center gap-2 sm:gap-4">
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#b9bbbe] cursor-pointer hover:text-[#dcddde]" />
-              </div>
+          {/* Пользователь */}
+          <div className="p-2 bg-[#292b2f] flex items-center gap-2">
+            <div className="w-8 h-8 bg-[#faa61a] rounded-full flex items-center justify-center font-bold text-sm text-[#2f3136]">
+              {currentPlayerIndex + 1}
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-white text-sm font-medium">Игрок {currentPlayerIndex + 1}</div>
+              <div className="text-[#3ba55c] text-xs">● В игре</div>
+            </div>
+          </div>
+        </div>
 
-            {/* Сообщения чата */}
-            <div className="flex-1 p-2 sm:p-4 space-y-4 sm:space-y-6 overflow-y-auto">
-              {/* Приветственное сообщение */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#5865f2] rounded-full flex items-center justify-center flex-shrink-0">
-                  <Monitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+        {/* Центр */}
+        <div className="flex-1 flex flex-col">
+          {/* Заголовок канала */}
+          <div className="h-12 bg-[#36393f] border-b border-[#202225] flex items-center px-4 gap-2">
+            <span className="text-xl">🎰</span>
+            <span className="text-white font-semibold">барабан</span>
+            <div className="w-px h-5 bg-[#40444b] mx-2" />
+            <span className="text-[#8e9297] text-sm hidden sm:block">
+              Игрок {currentPlayerIndex + 1} · Прокрут {(player?.spinsUsed ?? 0) + 1}/{TOTAL_SPINS}
+            </span>
+          </div>
+
+          {/* Контент */}
+          <div className="flex-1 p-4 sm:p-6 flex flex-col items-center gap-6 overflow-y-auto">
+
+            {/* Карточка текущего приза */}
+            {player && (
+              <div
+                className="w-full max-w-sm rounded-xl p-4 text-center border"
+                style={{
+                  borderColor: getPrizeForWindow(player.currentWindow).color + "66",
+                  background: getPrizeForWindow(player.currentWindow).color + "11",
+                }}
+              >
+                <div className="text-4xl mb-1">{getPrizeForWindow(player.currentWindow).emoji}</div>
+                <div
+                  className="font-bold text-lg"
+                  style={{ color: getPrizeForWindow(player.currentWindow).color }}
+                >
+                  {getPrizeForWindow(player.currentWindow).label}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Дискордик Бот</span>
-                    <span className="bg-[#5865f2] text-white text-xs px-1 rounded">БОТ</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:00</span>
-                  </div>
-                  <div className="text-[#dcddde] text-sm sm:text-base">
-                    <p className="mb-3 sm:mb-4">
-                      <strong>Добро пожаловать в Дискордик!</strong> Показывай свой прогресс в Figma прямо в Discord.
+                <div className="text-[#b9bbbe] text-sm mt-1">
+                  Шанс выиграть: {Math.round(getPrizeForWindow(player.currentWindow).winChance * 100)}%
+                </div>
+              </div>
+            )}
+
+            {/* Колесо */}
+            <Wheel angle={wheelAngle} spinning={spinning} />
+
+            {/* Прогресс */}
+            {player && (
+              <div className="w-full max-w-sm">
+                <SpinProgress player={player} />
+              </div>
+            )}
+
+            {/* Кнопки действий */}
+            {player && (
+              <div className="w-full max-w-sm space-y-3">
+                {/* Состояние: выиграли — берём или продолжаем */}
+                {player.phase === "won" && player.pendingPrize && (
+                  <div className="bg-[#2f3136] border border-[#faa61a] rounded-xl p-4 text-center">
+                    <div className="text-3xl mb-2">{player.pendingPrize.emoji}</div>
+                    <div className="text-white font-bold mb-1">
+                      Выпало: {player.pendingPrize.label}!
+                    </div>
+                    <p className="text-[#b9bbbe] text-xs mb-4">
+                      Взять приз сейчас или рискнуть на следующее окно?
                     </p>
-                    <div className="bg-[#2f3136] border-l-4 border-[#5865f2] p-3 sm:p-4 rounded">
-                      <h3 className="text-white font-semibold mb-2 text-sm sm:text-base">Что умеет Дискордик:</h3>
-                      <ul className="space-y-1 text-xs sm:text-sm text-[#b9bbbe]">
-                        <li>Автоматически определяет Figma в браузере и приложении</li>
-                        <li>Показывает название текущего проекта/файла</li>
-                        <li>Обновляется каждые 5 секунд в реальном времени</li>
-                        <li>Очищает статус при простое</li>
-                        <li>Работает на всех платформах</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Сообщение пользователя с Rich Presence */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs sm:text-sm font-medium">М</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Мария Дизайнер</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:05</span>
-                  </div>
-                  <div className="text-[#dcddde] mb-3 text-sm sm:text-base">
-                    Только начала работу над новым дизайном лендинга!
-                  </div>
-
-                  {/* Демо Rich Presence */}
-                  <div className="bg-[#2f3136] border border-[#202225] rounded-lg overflow-hidden w-full max-w-sm">
-                    {/* Заголовок профиля */}
-                    <div className="h-16 sm:h-20 bg-gradient-to-r from-[#5865f2] to-[#7c3aed] relative">
-                      <div className="absolute -bottom-3 sm:-bottom-4 left-3 sm:left-4">
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-[#2f3136] bg-[#36393f] overflow-hidden">
-                          <div className="w-full h-full bg-gradient-to-br from-[#4f46e5] to-[#7c3aed] flex items-center justify-center">
-                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-[#2f3136] rounded-full flex items-center justify-center">
-                              <span className="text-lg sm:text-2xl">M</span>
-                            </div>
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-[#3ba55c] border-4 border-[#2f3136] rounded-full"></div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="absolute top-2 sm:top-4 right-2 sm:right-4 bg-[#4f545c] hover:bg-[#5d6269] text-white text-xs px-2 sm:px-3 py-1 rounded"
+                    <div className="flex gap-3">
+                      <button
+                        onClick={takePrize}
+                        className="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+                        style={{ background: "#3ba55c", color: "#fff" }}
                       >
-                        <Settings className="w-3 h-3 mr-1" />
-                        <span className="hidden sm:inline">Профиль</span>
-                      </Button>
-                    </div>
-
-                    {/* Информация профиля */}
-                    <div className="pt-4 sm:pt-6 px-3 sm:px-4 pb-3 sm:pb-4">
-                      <div className="mb-3 sm:mb-4">
-                        <h3 className="text-white text-lg sm:text-xl font-bold mb-1">Мария</h3>
-                        <div className="flex items-center gap-2 text-[#b9bbbe] text-xs sm:text-sm">
-                          <span>maria_design</span>
-                          <span>-</span>
-                          <span>Она</span>
-                          <div className="flex gap-1 ml-2">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#5865f2] rounded-sm"></div>
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#3ba55c] rounded-sm"></div>
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#faa61a] rounded-sm"></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Статусное сообщение */}
-                      <div className="mb-3 sm:mb-4">
-                        <div className="bg-[#36393f] rounded-lg p-2 sm:p-3 relative">
-                          <div className="absolute -top-2 left-3 sm:left-4 w-4 h-4 bg-[#36393f] rotate-45"></div>
-                          <div className="flex items-center gap-2 text-[#dcddde] text-xs sm:text-sm">
-                            <div className="w-3 h-3 sm:w-4 sm:h-4 bg-[#5865f2] rounded-full flex items-center justify-center">
-                              <span className="text-xs">*</span>
-                            </div>
-                            <span>Работаю над проектом...</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Вкладки */}
-                      <div className="flex border-b border-[#40444b] mb-3 sm:mb-4">
-                        <button className="px-3 sm:px-4 py-2 text-[#8e9297] text-xs sm:text-sm font-medium hover:text-[#dcddde]">
-                          Обо мне
+                        ✅ Взять приз!
+                      </button>
+                      {player.currentWindow < PRIZES.length - 1 ? (
+                        <button
+                          onClick={continueSpin}
+                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm border border-[#ed4245] text-[#ed4245] hover:bg-[#ed4245]/10 transition-all"
+                        >
+                          🎲 Рискнуть
                         </button>
-                        <button className="px-3 sm:px-4 py-2 text-white text-xs sm:text-sm font-medium border-b-2 border-[#5865f2]">
-                          Активность
+                      ) : (
+                        <button
+                          onClick={takePrize}
+                          className="flex-1 py-2.5 rounded-lg font-semibold text-sm border border-[#40444b] text-[#8e9297] cursor-not-allowed"
+                          disabled
+                        >
+                          Это макс.
                         </button>
-                      </div>
-
-                      {/* Активность Дискордик */}
-                      <div>
-                        <div className="flex items-center gap-2 text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2 sm:mb-3">
-                          <span>Играет</span>
-                        </div>
-
-                        <div className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-[#36393f] rounded-lg">
-                          {/* Логотип Figma */}
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-[#ff7262] to-[#f24e1e] rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M15.852 8.981h-4.588V0h4.588c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.491-4.49 4.491zM12.735 7.51h3.117c1.665 0 3.019-1.355 3.019-3.019s-1.354-3.019-3.019-3.019h-3.117V7.51zm0 1.471H8.148c-2.476 0-4.49-2.015-4.49-4.49S5.672 0 8.148 0h4.588v8.981zm-4.587-7.51c-1.665 0-3.019 1.355-3.019 3.019s1.354 3.02 3.019 3.02h3.117V1.471H8.148zm4.587 15.019H8.148c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h4.588v8.98zM8.148 8.981c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h3.117V8.981H8.148zM8.172 24c-2.489 0-4.515-2.014-4.515-4.49s2.014-4.49 4.49-4.49h4.588v4.441c0 2.503-2.047 4.539-4.563 4.539zm-.024-7.51a3.023 3.023 0 0 0-3.019 3.019c0 1.665 1.365 3.019 3.044 3.019 1.705 0 3.093-1.376 3.093-3.068v-2.97H8.148z" />
-                            </svg>
-                          </div>
-
-                          {/* Детали активности */}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white font-semibold text-xs sm:text-sm mb-1">Дискордик</div>
-                            <div className="text-[#dcddde] text-xs sm:text-sm mb-1">Работаю над логотипом</div>
-                            <div className="text-[#b9bbbe] text-xs sm:text-sm mb-2">Figma Desktop</div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-[#3ba55c] rounded-full animate-pulse"></div>
-                              <span className="text-[#3ba55c] text-xs font-medium">0:37 прошло</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
+                )}
 
-              {/* Еще одно сообщение пользователя */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs sm:text-sm font-medium">И</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-white font-medium text-sm sm:text-base">Иван UX</span>
-                    <span className="text-[#72767d] text-xs hidden sm:inline">Сегодня в 12:08</span>
-                  </div>
-                  <div className="text-[#dcddde] text-sm sm:text-base">
-                    Обожаю видеть прогресс всех! Дискордик делает общение таким удобным
-                  </div>
-                </div>
-              </div>
-
-              {/* Секция "Начало работы" */}
-              <div className="bg-[#2f3136] border border-[#202225] rounded-lg p-4 sm:p-6 mt-6 sm:mt-8">
-                <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Download className="w-5 h-5 sm:w-6 sm:h-6 text-[#5865f2]" />
-                  Начни работу с Дискордик
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">1</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Скачай приложение</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Получи Дискордик для Windows, macOS или Linux</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">2</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Авторизуй Discord</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Подключись безопасно через OAuth</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#5865f2] rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-sm sm:text-base">3</span>
-                    </div>
-                    <h3 className="text-white font-medium mb-2 text-sm sm:text-base">Начни дизайнить</h3>
-                    <p className="text-[#b9bbbe] text-xs sm:text-sm">Открой Figma и смотри как работает магия</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-6 sm:px-8 py-2 sm:py-3 rounded text-sm font-medium">
-                    <Download className="w-4 h-4 mr-2" />
-                    Скачать Дискордик
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-[#4f545c] text-[#b9bbbe] hover:bg-[#40444b] hover:border-[#6d6f78] px-6 sm:px-8 py-2 sm:py-3 rounded text-sm font-medium bg-transparent"
+                {/* Крутить */}
+                {(player.phase === "idle" || player.phase === "spinning" || !player.phase) && (
+                  <button
+                    onClick={spin}
+                    disabled={spinning || player.spinsUsed >= TOTAL_SPINS}
+                    className="w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: spinning
+                        ? "#40444b"
+                        : "linear-gradient(135deg, #5865f2, #faa61a)",
+                      color: "#fff",
+                      boxShadow: spinning ? "none" : "0 4px 20px rgba(88,101,242,0.4)",
+                    }}
                   >
-                    <Shield className="w-4 h-4 mr-2" />
-                    Авторизовать Discord
-                  </Button>
-                </div>
-              </div>
+                    {spinning ? "🌀 Крутится…" : "🎰 Крутить барабан!"}
+                  </button>
+                )}
 
-              {/* Преимущества */}
-              <div className="bg-[#2f3136] border border-[#202225] rounded-lg p-4 sm:p-6">
-                <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Почему Дискордик?</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  {[
-                    {
-                      icon: <Zap className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Автоопределение",
-                      desc: "Работает с приложением и браузером",
-                    },
-                    {
-                      icon: <Eye className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Умное отслеживание",
-                      desc: "Показывает имена проектов и статус",
-                    },
-                    {
-                      icon: <Clock className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Обновление в реальном времени",
-                      desc: "Синхронизация каждые 5 секунд",
-                    },
-                    {
-                      icon: <Shield className="w-4 h-4 sm:w-5 sm:h-5" />,
-                      title: "Приватность прежде всего",
-                      desc: "Никакого сбора данных",
-                    },
-                  ].map((feature, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded hover:bg-[#36393f] transition-colors"
-                    >
-                      <div className="text-[#5865f2] mt-0.5">{feature.icon}</div>
-                      <div>
-                        <div className="text-white font-medium text-xs sm:text-sm">{feature.title}</div>
-                        <div className="text-[#b9bbbe] text-xs sm:text-sm">{feature.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+                {/* Утешительный */}
+                {player.phase === "consolation" && (
+                  <div className="bg-[#2f3136] border border-[#72767d] rounded-xl p-4 text-center">
+                    <div className="text-4xl mb-2">🎁</div>
+                    <div className="text-white font-bold mb-1">Утешительный приз!</div>
+                    <p className="text-[#b9bbbe] text-sm mb-4">
+                      Все прокруты использованы — ты получаешь утешительный подарок!
+                    </p>
+                    {playerCount! > currentPlayerIndex + 1 ? (
+                      <button
+                        onClick={nextPlayer}
+                        className="w-full py-2.5 rounded-lg font-semibold bg-[#5865f2] text-white hover:bg-[#4752c4] transition-all"
+                      >
+                        Следующий игрок →
+                      </button>
+                    ) : null}
+                  </div>
+                )}
 
-            {/* Поле ввода сообщения */}
-            <div className="p-2 sm:p-4">
-              <div className="bg-[#40444b] rounded-lg px-3 sm:px-4 py-2 sm:py-3">
-                <div className="text-[#72767d] text-xs sm:text-sm">Сообщение #витрина</div>
+                {/* Взяли приз */}
+                {player.phase === "took" && (
+                  <div className="bg-[#2f3136] border border-[#3ba55c] rounded-xl p-4 text-center">
+                    <div className="text-4xl mb-2">🎊</div>
+                    <div className="text-[#3ba55c] font-bold mb-1">Приз получен!</div>
+                    <p className="text-[#b9bbbe] text-sm mb-4">
+                      {player.wonPrizes[player.wonPrizes.length - 1]?.emoji}{" "}
+                      {player.wonPrizes[player.wonPrizes.length - 1]?.label}
+                    </p>
+                    {playerCount! > currentPlayerIndex + 1 ? (
+                      <button
+                        onClick={nextPlayer}
+                        className="w-full py-2.5 rounded-lg font-semibold bg-[#5865f2] text-white hover:bg-[#4752c4] transition-all"
+                      >
+                        Следующий игрок →
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+
+            {/* Лог */}
+            {player && (
+              <div className="w-full max-w-sm">
+                <div className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2">
+                  Лог игры
+                </div>
+                <GameLog messages={player.log} />
+              </div>
+            )}
           </div>
 
-          {/* Боковая панель участников - скрыта на мобильных/планшетах */}
-          <div className="hidden xl:block w-60 bg-[#2f3136] p-4">
-            <div className="mb-4">
-              <h3 className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-2">В сети - 3</h3>
-              <div className="space-y-2">
-                {[
-                  {
-                    name: "Мария Дизайнер",
-                    status: "Работает в Figma",
-                    avatar: "М",
-                    color: "from-purple-500 to-pink-500",
-                  },
-                  { name: "Иван UX", status: "В сети", avatar: "И", color: "from-green-500 to-blue-500" },
-                  { name: "Алексей", status: "Разрабатывает Дискордик", avatar: "А", color: "from-blue-500 to-purple-500" },
-                ].map((user, index) => (
-                  <div key={index} className="flex items-center gap-3 p-2 rounded hover:bg-[#36393f] cursor-pointer">
-                    <div
-                      className={`w-8 h-8 bg-gradient-to-r ${user.color} rounded-full flex items-center justify-center relative`}
-                    >
-                      <span className="text-white text-sm font-medium">{user.avatar}</span>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#3ba55c] border-2 border-[#2f3136] rounded-full"></div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium truncate">{user.name}</div>
-                      <div className="text-[#b9bbbe] text-xs truncate">{user.status}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Поле сообщения (декор) */}
+          <div className="p-3 sm:p-4">
+            <div className="bg-[#40444b] rounded-lg px-4 py-2.5 text-[#72767d] text-sm">
+              Сообщение #барабан
             </div>
+          </div>
+        </div>
+
+        {/* Правая панель — участники */}
+        <div className="hidden xl:block w-56 bg-[#2f3136] p-4">
+          <div className="text-[#8e9297] text-xs font-semibold uppercase tracking-wide mb-3">
+            Игроки — {playerCount}
+          </div>
+          <div className="space-y-2">
+            {players.map((p, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-[#36393f] transition-colors"
+                onClick={() => {
+                  if (!spinning) {
+                    setCurrentPlayerIndex(i);
+                    setWheelAngle(0);
+                    totalAngleRef.current = 0;
+                  }
+                }}
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm relative"
+                  style={{
+                    background:
+                      p.phase === "took" || p.phase === "consolation"
+                        ? "#3ba55c"
+                        : i === currentPlayerIndex
+                        ? "#faa61a"
+                        : "#40444b",
+                    color: "#fff",
+                  }}
+                >
+                  {p.phase === "took" || p.phase === "consolation" ? "✓" : i + 1}
+                  <div
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2f3136]"
+                    style={{
+                      background:
+                        p.phase === "took" || p.phase === "consolation"
+                          ? "#3ba55c"
+                          : i === currentPlayerIndex
+                          ? "#faa61a"
+                          : "#8e9297",
+                    }}
+                  />
+                </div>
+                <div>
+                  <div
+                    className="text-sm font-medium"
+                    style={{
+                      color: i === currentPlayerIndex ? "#faa61a" : "#dcddde",
+                    }}
+                  >
+                    Игрок {i + 1}
+                  </div>
+                  <div className="text-[#b9bbbe] text-xs">
+                    {p.phase === "took"
+                      ? `🏆 ${p.wonPrizes[p.wonPrizes.length - 1]?.label ?? "Приз"}`
+                      : p.phase === "consolation"
+                      ? "🎁 Утешительный"
+                      : `${p.spinsUsed}/${TOTAL_SPINS} прокр.`}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default Index;
+}
