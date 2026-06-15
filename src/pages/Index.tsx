@@ -13,16 +13,17 @@ interface Prize {
 
 // Призы в порядке ценности (1й — самый ценный)
 const PRIZES: Prize[] = [
-  { id: 5, label: "Косметичка стильная", emoji: "👜", color: "#ed4245", winChance: 0.75 },
-  { id: 4, label: "Ролик для одежды 60 листов", emoji: "🧹", color: "#3ba55c", winChance: 0.45 },
+  { id: 3, label: "Чупачупс", emoji: "🍭", color: "#eb459e", winChance: 0.75 },
+  { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.45 },
   { id: 1, label: "Яблокорезка из нержавейки", emoji: "🍎", color: "#faa61a", winChance: 0.35 },
-  { id: 2, label: "Органайзер для мелочей", emoji: "🗂️", color: "#5865f2", winChance: 0.15 },
-  { id: 3, label: "Чупачупс", emoji: "🍭", color: "#eb459e", winChance: 0.05 },
+  { id: 4, label: "Ролик для одежды 60 листов", emoji: "🧹", color: "#3ba55c", winChance: 0.15 },
+  { id: 5, label: "Косметичка стильная", emoji: "👜", color: "#ed4245", winChance: 0.05 },
 ];
 
 const PRIZE_IMAGES: Record<number, string> = {
   1: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/3265aa2f-2583-414e-b309-bddc21ae2a40.png",
   2: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/5c9ce5b3-e991-4669-9848-87f8d2c2e4ec.png",
+  3: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/files/e688d9dc-8d43-410e-a4a6-413e3da0a0fa.jpg",
   4: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/aa328fab-8027-40e3-9dc6-cd015602bb78.png",
   5: "https://cdn.poehali.dev/projects/11983691-d48b-4eb3-8a0a-bdc07568f7f6/bucket/769fc24c-1ac5-4957-a020-c147188c60da.png",
 };
